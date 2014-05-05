@@ -87,17 +87,17 @@ LRESULT CALLBACK	WndProcListView1(HWND hWnd, UINT message, WPARAM wParam, LPARAM
 LRESULT CALLBACK	WndProcListView2(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
 
 int APIENTRY _tWinMain(_In_ HINSTANCE hInstance,
-                     _In_opt_ HINSTANCE hPrevInstance,
-                     _In_ LPTSTR    lpCmdLine,
-                     _In_ int       nCmdShow)
+					   _In_opt_ HINSTANCE hPrevInstance,
+					   _In_ LPTSTR    lpCmdLine,
+					   _In_ int       nCmdShow)
 {
 	UNREFERENCED_PARAMETER(hPrevInstance);
 	UNREFERENCED_PARAMETER(lpCmdLine);
 
- 	// TODO: разместите код здесь.
+	// TODO: разместите код здесь.
 	MSG msg;
 	HACCEL hAccelTable;
-	
+
 	// Инициализация глобальных строк
 	LoadString(hInstance, IDS_APP_TITLE, szTitle, MAX_LOADSTRING);
 	LoadString(hInstance, IDC_EXPLORER_V2, szWindowClass, MAX_LOADSTRING);
@@ -179,7 +179,7 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 	GetPrivilege(SE_BACKUP_NAME);
 	GetPrivilege(SE_RESTORE_NAME);
 	GetPrivilege(SE_CREATE_SYMBOLIC_LINK_NAME);
-	
+
 	if(!IsPrivilege(SE_BACKUP_NAME) || !IsPrivilege(SE_RESTORE_NAME) || !IsPrivilege(SE_CREATE_SYMBOLIC_LINK_NAME)) 
 		MessageBox(0,_T("Не удалось получить привилегии, программа может не правильно работать."),_T("Error"),MB_OK);
 
@@ -223,7 +223,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 	{
 	case WM_CREATE:	
 		InitCommonControls();
-		
+
 		disk_start = disk = new TCHAR[256];
 		memset(disk_start, 0, sizeof(disk_start));
 
@@ -270,7 +270,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			480, 620,
 			hWnd,
 			(HMENU)ID_LISTBOX_2);	
-		
+
 		origWndProcListView = (WNDPROC) SetWindowLong(hWndListBox1, 
 			GWL_WNDPROC, (LONG) WndProcListView1); 
 
@@ -336,7 +336,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 				ListView_GetItemText(lpnmHdr->hwndFrom, pnmLV->iItem, 0, selectedFile, MAX_PATH);
 			}
 			break;
-//		case NM_RETURN:
+			//		case NM_RETURN:
 		case NM_DBLCLK:
 			switch (lpnmHdr->idFrom)
 			{
@@ -393,15 +393,15 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 						BYTE *pBuffer;
 						PREPARSE_DATA_BUFFER pReparseBuffer = NULL;
 						DWORD dwRetCode;
-												
+
 						fullPathToFile[0] = 0;
 						_tcscpy_s(fullPathToFile, _T("\\??\\"));
 						//_tcscpy_s(fullPathToFile, _T("\\\\.\\"));
 						_tcscat_s(fullPathToFile, path);
 						_tcscat_s(fullPathToFile, selectedFile);
-						
+
 						//MessageBox(0, fullPathToFile, L"", 0);
-						
+
 						reparsePoint = CreateFile(fullPathToFile,
 							GENERIC_READ | MAXIMUM_ALLOWED | ACCESS_SYSTEM_SECURITY,
 							0, 
@@ -543,19 +543,19 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 				MessageBox(hWnd,_T("Я ленивая задница :)"),0,MB_OK);
 				break;
 			}
-/*			if (DialogBox(hInst, MAKEINTRESOURCE(IDD_DIALOG_PROGRESS_BAR), hWnd, Dialog_Progress_Bar) != 0)
+			/*			if (DialogBox(hInst, MAKEINTRESOURCE(IDD_DIALOG_PROGRESS_BAR), hWnd, Dialog_Progress_Bar) != 0)
 			{
-				switch (lastListBox)
-				{
-				case 1:
-					LoadFileList(hWndListBox2, path2);
-					break;
-				case 2:
-					LoadFileList(hWndListBox1, path1);
-					break;
-				}
+			switch (lastListBox)
+			{
+			case 1:
+			LoadFileList(hWndListBox2, path2);
+			break;
+			case 2:
+			LoadFileList(hWndListBox1, path1);
+			break;
 			}
-*/			break;
+			}
+			*/			break;
 		default:
 			if (wmId >= ID_BUTTON_START && wmId < id_button)
 			{
@@ -622,13 +622,72 @@ INT_PTR CALLBACK Dialog_Progress_Bar(HWND hDlg, UINT message, WPARAM wParam, LPA
 	switch (message)
 	{
 	case WM_INITDIALOG:
-		CreateThread(
-			0,						// default security attributes
-			0,                      // use default stack size  
-			ThreadCopy,				// thread function name
-			hDlg,					// argument to thread function 
-			0,                      // use default creation flags 
-			0);
+		TCHAR lpExistingFileName[MAX_PATH];
+		TCHAR lpNewFileName[MAX_PATH];
+		bool copy;
+
+		memset(lpExistingFileName,0,MAX_PATH);
+		memset(lpNewFileName,0,MAX_PATH);
+
+		switch (lastListBox)
+		{
+		case 0:
+			copy = 0;
+			EndDialog(hDlg, LOWORD(IDCANCEL));
+			break;
+		case 1:
+			copy = 1;
+			_tcscpy_s(lpExistingFileName, path1);
+			_tcscat_s(lpExistingFileName, selectedFile1);
+			_tcscpy_s(lpNewFileName, path2);
+			_tcscat_s(lpNewFileName, selectedFile1);
+			break;
+		case 2:
+			copy = 1;
+			_tcscpy_s(lpExistingFileName, path2);
+			_tcscat_s(lpExistingFileName, selectedFile2);
+			_tcscpy_s(lpNewFileName, path1);
+			_tcscat_s(lpNewFileName, selectedFile2);
+			break;
+		default:
+			copy = 0;
+		}
+
+		if (copy)
+		{
+			SHFILEOPSTRUCT shFileOpStr = {0};
+			int i;
+			
+			i = 0;
+			while(lpExistingFileName[i]) i++;
+			lpExistingFileName[i+1] = 0;
+
+			i = 0;
+			while(lpNewFileName[i]) i++;
+			lpNewFileName[i+1] = 0;
+
+			shFileOpStr.hwnd = 0;
+			shFileOpStr.wFunc = FO_COPY;
+			shFileOpStr.pFrom = lpExistingFileName;
+			shFileOpStr.pTo = lpNewFileName;
+			shFileOpStr.fFlags = FOF_NOCONFIRMMKDIR;  
+			shFileOpStr.fAnyOperationsAborted = 0;
+			shFileOpStr.hNameMappings = 0;
+			shFileOpStr.lpszProgressTitle = 0;
+
+			DWORD r = SHFileOperation(&shFileOpStr);
+
+			EndDialog(hDlg, LOWORD(r));
+
+		}
+		/*		CreateThread(
+		0,						// default security attributes
+		0,                      // use default stack size  
+		ThreadCopy,				// thread function name
+		hDlg,					// argument to thread function 
+		0,                      // use default creation flags 
+		0);
+		*/		
 		return (INT_PTR)TRUE;
 	case WM_COMMAND:
 		switch(wParam) 
@@ -765,7 +824,7 @@ void LoadFileList(HWND hWndListBox, TCHAR *path)
 	SYSTEMTIME fileDate;		// Дата изменения файла
 	TCHAR cTmp[256], cTmp2[256];
 	TCHAR path2[MAX_PATH];
-	
+
 	SendMessage(hWndListBox, LVM_DELETEALLITEMS, 0, 0);
 
 	path2[0] = 0;
@@ -860,18 +919,18 @@ int CALLBACK SortUpDir(LPARAM lParam1, LPARAM lParam2, LPARAM lParamSort)
 		1, word2, 256);
 
 	if (word1[0] == '<' && word2[0] == '<')
-//	if ((_tcscmp(word1, _T("<Папка>")) == 0 || _tcscmp(word1, _T("<Ссылка>")) == 0) &&
-//		(_tcscmp(word2, _T("<Папка>")) == 0 || _tcscmp(word2, _T("<Ссылка>")) == 0))
+		//	if ((_tcscmp(word1, _T("<Папка>")) == 0 || _tcscmp(word1, _T("<Ссылка>")) == 0) &&
+			//		(_tcscmp(word2, _T("<Папка>")) == 0 || _tcscmp(word2, _T("<Ссылка>")) == 0))
 	{
 		return 0;
 	}
 	else if (word1[0] == '<')
-//	else if (_tcscmp(word1, _T("<Папка>")) == 0 || _tcscmp(word1, _T("<Ссылка>")) == 0)
+		//	else if (_tcscmp(word1, _T("<Папка>")) == 0 || _tcscmp(word1, _T("<Ссылка>")) == 0)
 	{
 		return -1;
 	}
 	else if (word2[0] == '<')
-//	else if (_tcscmp(word2, _T("<Папка>")) == 0 || _tcscmp(word2, _T("<Ссылка>")) == 0)
+		//	else if (_tcscmp(word2, _T("<Папка>")) == 0 || _tcscmp(word2, _T("<Ссылка>")) == 0)
 	{
 		return 1;
 	}
@@ -986,66 +1045,66 @@ void DisplayError(TCHAR *header)
 
 BOOL IsPrivilege(IN PCTSTR pszPrivilegeName)
 {
-    //_ASSERTE(pszPrivilegeName != NULL);
- 
-    LUID Luid;
-    HANDLE hToken;
-    DWORD cbNeeded;
-    PTOKEN_PRIVILEGES pPriv;
-    
-    // получаем идентификатор привилегии
-    if (!LookupPrivilegeValue(NULL, pszPrivilegeName, &Luid))
-        return FALSE;
- 
-    // получаем токен текущего потока
-    if (!OpenThreadToken(GetCurrentThread(), TOKEN_QUERY, FALSE, &hToken))
-    {
-        if (GetLastError() != ERROR_NO_TOKEN)
-            return FALSE;
- 
-        // получаем токен процесса
-        if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &hToken))
-            return FALSE;
-    }
- 
-    // определяем размер буфера, необходимый для получения
-    // всех привилегий
-    if (!GetTokenInformation(hToken, TokenPrivileges, NULL, 0, &cbNeeded))
-    {
-        if (GetLastError() != ERROR_INSUFFICIENT_BUFFER)
-        {
-            DWORD dwError = GetLastError();
-            CloseHandle(hToken);
-            return SetLastError(dwError), FALSE;
-        }
-    }
- 
-    // выделяем память для выходного буфера
-    pPriv = (PTOKEN_PRIVILEGES)_alloca(cbNeeded);
-//    _ASSERTE(pPriv != NULL);
- 
-    // получаем список привилегий
-    if (!GetTokenInformation(hToken, TokenPrivileges, pPriv, cbNeeded,
-                             &cbNeeded))
-    {
-        DWORD dwError = GetLastError();
-        CloseHandle(hToken);
-        return SetLastError(dwError), FALSE;
-    }
- 
-    CloseHandle(hToken);
- 
-    // проходим по списку привилегий и проверяем, есть ли в нем
-    // указанная привилегия
-    for (UINT i = 0; i < pPriv->PrivilegeCount; i++)
-    {
-        if (pPriv->Privileges[i].Luid.LowPart == Luid.LowPart &&
-            pPriv->Privileges[i].Luid.HighPart == Luid.HighPart)
-            return TRUE;
-    }
- 
-    SetLastError(ERROR_SUCCESS);
-    return FALSE;
+	//_ASSERTE(pszPrivilegeName != NULL);
+
+	LUID Luid;
+	HANDLE hToken;
+	DWORD cbNeeded;
+	PTOKEN_PRIVILEGES pPriv;
+
+	// получаем идентификатор привилегии
+	if (!LookupPrivilegeValue(NULL, pszPrivilegeName, &Luid))
+		return FALSE;
+
+	// получаем токен текущего потока
+	if (!OpenThreadToken(GetCurrentThread(), TOKEN_QUERY, FALSE, &hToken))
+	{
+		if (GetLastError() != ERROR_NO_TOKEN)
+			return FALSE;
+
+		// получаем токен процесса
+		if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &hToken))
+			return FALSE;
+	}
+
+	// определяем размер буфера, необходимый для получения
+	// всех привилегий
+	if (!GetTokenInformation(hToken, TokenPrivileges, NULL, 0, &cbNeeded))
+	{
+		if (GetLastError() != ERROR_INSUFFICIENT_BUFFER)
+		{
+			DWORD dwError = GetLastError();
+			CloseHandle(hToken);
+			return SetLastError(dwError), FALSE;
+		}
+	}
+
+	// выделяем память для выходного буфера
+	pPriv = (PTOKEN_PRIVILEGES)_alloca(cbNeeded);
+	//    _ASSERTE(pPriv != NULL);
+
+	// получаем список привилегий
+	if (!GetTokenInformation(hToken, TokenPrivileges, pPriv, cbNeeded,
+		&cbNeeded))
+	{
+		DWORD dwError = GetLastError();
+		CloseHandle(hToken);
+		return SetLastError(dwError), FALSE;
+	}
+
+	CloseHandle(hToken);
+
+	// проходим по списку привилегий и проверяем, есть ли в нем
+	// указанная привилегия
+	for (UINT i = 0; i < pPriv->PrivilegeCount; i++)
+	{
+		if (pPriv->Privileges[i].Luid.LowPart == Luid.LowPart &&
+			pPriv->Privileges[i].Luid.HighPart == Luid.HighPart)
+			return TRUE;
+	}
+
+	SetLastError(ERROR_SUCCESS);
+	return FALSE;
 }
 
 LRESULT CALLBACK WndProcListView1(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
@@ -1056,7 +1115,7 @@ LRESULT CALLBACK WndProcListView1(HWND hWnd, UINT message, WPARAM wParam, LPARAM
 		switch(wParam)
 		{
 		case VK_F5:
-			if (DialogBox(hInst, MAKEINTRESOURCE(IDD_DIALOG_PROGRESS_BAR), hWnd, Dialog_Progress_Bar) != 0)
+			if (DialogBox(hInst, MAKEINTRESOURCE(IDD_DIALOG_PROGRESS_BAR), hWnd, Dialog_Progress_Bar) == 0)
 			{
 				LoadFileList(hWndListBox2, path2);
 			}
@@ -1079,7 +1138,7 @@ LRESULT CALLBACK WndProcListView2(HWND hWnd, UINT message, WPARAM wParam, LPARAM
 		switch(wParam)
 		{
 		case VK_F5:
-			if (DialogBox(hInst, MAKEINTRESOURCE(IDD_DIALOG_PROGRESS_BAR), hWnd, Dialog_Progress_Bar) != 0)
+			if (DialogBox(hInst, MAKEINTRESOURCE(IDD_DIALOG_PROGRESS_BAR), hWnd, Dialog_Progress_Bar) == 0)
 			{
 				LoadFileList(hWndListBox1, path1);
 			}
