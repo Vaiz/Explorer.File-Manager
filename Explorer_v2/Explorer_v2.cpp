@@ -16,6 +16,7 @@ TCHAR szWindowClass[MAX_LOADSTRING];			// имя класса главного окна
 HWND hWndListBox1, hWndListBox2;
 HWND hWndEdit1, hWndEdit2;
 HWND hWndProgressBar;
+WNDPROC origWndProcListView;
 TCHAR path1[MAX_PATH], path2[MAX_PATH];
 TCHAR selectedFile1[MAX_PATH], selectedFile2[MAX_PATH];
 int lastListBox = 0;
@@ -82,6 +83,8 @@ void				AddIconToListBox(HWND hWndListBox, int size, TCHAR c_dir[MAX_PATH]);
 void				GetPrivilege(LPCWSTR priv);
 void				DisplayError(TCHAR *header);
 BOOL				IsPrivilege(IN PCTSTR pszPrivilegeName);
+LRESULT CALLBACK	WndProcListView1(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
+LRESULT CALLBACK	WndProcListView2(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
 
 int APIENTRY _tWinMain(_In_ HINSTANCE hInstance,
                      _In_opt_ HINSTANCE hPrevInstance,
@@ -173,18 +176,12 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 		return FALSE;
 	}
 
-	/*	GetPrivilege(SE_BACKUP_NAME);
+	GetPrivilege(SE_BACKUP_NAME);
 	GetPrivilege(SE_RESTORE_NAME);
 	GetPrivilege(SE_CREATE_SYMBOLIC_LINK_NAME);
-	*/
-	if(IsPrivilege(SE_BACKUP_NAME)) MessageBox(0,_T("SE_BACKUP_NAME = 1"),0,MB_OK);
-	else MessageBox(0,_T("SE_BACKUP_NAME = 0"),0,MB_OK);
-
-	if(IsPrivilege(SE_RESTORE_NAME)) MessageBox(0,_T("SE_RESTORE_NAME = 1"),0,MB_OK);
-	else MessageBox(0,_T("SE_RESTORE_NAME = 0"),0,MB_OK);
-
-	if(IsPrivilege(SE_CREATE_SYMBOLIC_LINK_NAME)) MessageBox(0,_T("SE_CREATE_SYMBOLIC_LINK_NAME = 1"),0,MB_OK);
-	else MessageBox(0,_T("SE_CREATE_SYMBOLIC_LINK_NAME = 0"),0,MB_OK);
+	
+	if(!IsPrivilege(SE_BACKUP_NAME) || !IsPrivilege(SE_RESTORE_NAME) || !IsPrivilege(SE_CREATE_SYMBOLIC_LINK_NAME)) 
+		MessageBox(0,_T("Не удалось получить привилегии, программа может не правильно работать."),_T("Error"),MB_OK);
 
 
 	ShowWindow(hWnd, nCmdShow);
@@ -259,7 +256,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 
 		hWndEdit2 = CreateWindow(_T("EDIT"), NULL, WS_BORDER | WS_VISIBLE | WS_CHILD | ES_LEFT | ES_READONLY,
 			x + 490, y, 480, 20, hWnd, (HMENU)ID_EDIT_2, NULL, NULL);
-		
+
 		y += 30;
 
 		hWndListBox1 = CreateListBox(
@@ -273,6 +270,13 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			480, 620,
 			hWnd,
 			(HMENU)ID_LISTBOX_2);	
+		
+		origWndProcListView = (WNDPROC) SetWindowLong(hWndListBox1, 
+			GWL_WNDPROC, (LONG) WndProcListView1); 
+
+		origWndProcListView = (WNDPROC) SetWindowLong(hWndListBox2, 
+			GWL_WNDPROC, (LONG) WndProcListView2); 
+
 		y += 630;
 
 		path1[0] = 0;
@@ -464,8 +468,55 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 					lastListBox = 0;
 					SetWindowText(hWndEdit, path);
 					LoadFileList(hWndListBox, path);
+					switch (lpnmHdr->idFrom)
+					{
+					case ID_LISTBOX_1:
+						selectedFile1[0] = 0;
+						break;
+					case ID_LISTBOX_2:
+						selectedFile2[0] = 0;
+						break;
+					default:
+						break;
+					}
+
 				}
 				delete[]selectedFile;
+			}
+			break;
+		case NM_RCLICK:
+			switch (lpnmHdr->idFrom)
+			{
+			case ID_LISTBOX_1:
+				hWndListBox = hWndListBox1;
+				hWndEdit = hWndEdit1;
+				path = path1;
+				break;
+			case ID_LISTBOX_2:
+				hWndListBox = hWndListBox2;
+				hWndEdit = hWndEdit2;
+				path = path2;
+				break;
+			default:
+				break;
+			}
+			if (hWndListBox)
+			{
+				selectedFile = new TCHAR[MAX_PATH];
+				ListView_GetItemText(lpnmHdr->hwndFrom, pnmLV->iItem, 0, selectedFile, MAX_PATH);
+
+				SHELLEXECUTEINFO fileInfo;
+
+				_tcscpy_s(fullPathToFile, path);
+				_tcscat_s(fullPathToFile, selectedFile);
+
+				ZeroMemory(&fileInfo,sizeof(SHELLEXECUTEINFO));
+				fileInfo.cbSize=sizeof(SHELLEXECUTEINFO);
+				fileInfo.lpVerb=_T("properties");
+				fileInfo.lpFile=fullPathToFile;
+				fileInfo.nShow=SW_SHOW;
+				fileInfo.fMask=SEE_MASK_INVOKEIDLIST;
+				ShellExecuteEx(&fileInfo);
 			}
 			break;
 		}
@@ -482,9 +533,17 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		case IDM_EXIT:
 			DestroyWindow(hWnd);
 			break;
-		case ID_FAST_BUTTON_COPY:
 		case ID_BUTTON_COPY:
-			if (DialogBox(hInst, MAKEINTRESOURCE(IDD_DIALOG_PROGRESS_BAR), hWnd, Dialog_Progress_Bar) != 0)
+			switch (lastListBox)
+			{
+			case 1:
+				SendMessage(hWndListBox1,WM_KEYDOWN,VK_F5,0);
+				break;
+			case 2:
+				MessageBox(hWnd,_T("Я ленивая задница :)"),0,MB_OK);
+				break;
+			}
+/*			if (DialogBox(hInst, MAKEINTRESOURCE(IDD_DIALOG_PROGRESS_BAR), hWnd, Dialog_Progress_Bar) != 0)
 			{
 				switch (lastListBox)
 				{
@@ -496,7 +555,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 					break;
 				}
 			}
-			break;
+*/			break;
 		default:
 			if (wmId >= ID_BUTTON_START && wmId < id_button)
 			{
@@ -504,12 +563,14 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 				{
 					hWndListBox = hWndListBox1;
 					hWndEdit = hWndEdit1;
+					selectedFile = selectedFile1;
 					path = path1;
 				}
 				else
 				{
 					hWndListBox = hWndListBox2;
 					hWndEdit = hWndEdit2;
+					selectedFile = selectedFile2;
 					path = path2;
 				}
 				GetWindowText(GetDlgItem(hWnd, wmId),path,MAX_PATH);
@@ -517,6 +578,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 				SetWindowText(hWndEdit, path);
 				LoadFileList(hWndListBox, path);
 				lastListBox = 0;
+				selectedFile[0] = 0;
 			}
 			return DefWindowProc(hWnd, message, wParam, lParam);
 		}
@@ -563,14 +625,15 @@ INT_PTR CALLBACK Dialog_Progress_Bar(HWND hDlg, UINT message, WPARAM wParam, LPA
 		CreateThread(
 			0,						// default security attributes
 			0,                      // use default stack size  
-			ThreadCopy,       // thread function name
+			ThreadCopy,				// thread function name
 			hDlg,					// argument to thread function 
 			0,                      // use default creation flags 
 			0);
 		return (INT_PTR)TRUE;
 	case WM_COMMAND:
-		if (LOWORD(wParam) == IDCANCEL)
+		switch(wParam) 
 		{
+		case IDCANCEL:
 			EndDialog(hDlg, LOWORD(wParam));
 			return (INT_PTR)TRUE;
 		}
@@ -985,3 +1048,45 @@ BOOL IsPrivilege(IN PCTSTR pszPrivilegeName)
     return FALSE;
 }
 
+LRESULT CALLBACK WndProcListView1(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
+{		
+	switch(message)
+	{
+	case WM_KEYDOWN:
+		switch(wParam)
+		{
+		case VK_F5:
+			if (DialogBox(hInst, MAKEINTRESOURCE(IDD_DIALOG_PROGRESS_BAR), hWnd, Dialog_Progress_Bar) != 0)
+			{
+				LoadFileList(hWndListBox2, path2);
+			}
+		default:
+			break;
+		}	
+	default:
+		return CallWindowProc(origWndProcListView, hWnd, message, wParam, lParam); 
+	}
+}
+
+LRESULT CALLBACK WndProcListView2(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
+{		
+	switch(message)
+	{
+	case WM_RBUTTONUP:
+
+		break;
+	case WM_KEYDOWN:
+		switch(wParam)
+		{
+		case VK_F5:
+			if (DialogBox(hInst, MAKEINTRESOURCE(IDD_DIALOG_PROGRESS_BAR), hWnd, Dialog_Progress_Bar) != 0)
+			{
+				LoadFileList(hWndListBox1, path1);
+			}
+		default:
+			break;
+		}	
+	default:
+		return CallWindowProc(origWndProcListView, hWnd, message, wParam, lParam); 
+	}
+}
