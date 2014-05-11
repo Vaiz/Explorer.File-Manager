@@ -64,19 +64,6 @@ BOOL				InitInstance(HINSTANCE, int);
 LRESULT CALLBACK	WndProc(HWND, UINT, WPARAM, LPARAM);
 INT_PTR CALLBACK	About(HWND, UINT, WPARAM, LPARAM);
 int					FileOperation(TCHAR *from, TCHAR *to, UINT func);
-INT_PTR CALLBACK	Dialog_Progress_Bar(HWND, UINT, WPARAM, LPARAM);
-DWORD CALLBACK CopyProgressRoutine(
-	_In_      LARGE_INTEGER TotalFileSize,
-	_In_      LARGE_INTEGER TotalBytesTransferred,
-	_In_      LARGE_INTEGER StreamSize,
-	_In_      LARGE_INTEGER StreamBytesTransferred,
-	_In_      DWORD dwStreamNumber,
-	_In_      DWORD dwCallbackReason,
-	_In_      HANDLE hSourceFile,
-	_In_      HANDLE hDestinationFile,
-	_In_opt_  LPVOID lpData
-	);
-DWORD WINAPI		ThreadCopy(LPVOID lpParam);
 HWND				CreateListBox(int x, int y, int width, int heigth, HWND hWnd, HMENU id);
 void				LoadFileList(HWND hWndlistBox, TCHAR *path);
 int CALLBACK		SortUpDir(LPARAM lParam1, LPARAM lParam2, LPARAM lParamSort);
@@ -84,6 +71,8 @@ void				AddIconToListBox(HWND hWndListBox, int size, TCHAR c_dir[MAX_PATH]);
 void				DisplayError(TCHAR *header);
 LRESULT CALLBACK	WndProcListView1(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
 LRESULT CALLBACK	WndProcListView2(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
+INT_PTR CALLBACK	DialogRename1(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
+INT_PTR CALLBACK	DialogRename2(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
 
 int APIENTRY _tWinMain(_In_ HINSTANCE hInstance,
 					   _In_opt_ HINSTANCE hPrevInstance,
@@ -733,65 +722,6 @@ INT_PTR CALLBACK Dialog_Progress_Bar(HWND hDlg, UINT message, WPARAM wParam, LPA
 	}
 	return (INT_PTR)FALSE;
 }
-
-DWORD WINAPI ThreadCopy(LPVOID lpParam)
-{
-	TCHAR lpExistingFileName[MAX_PATH];
-	TCHAR lpNewFileName[MAX_PATH];
-	DWORD r = 0;
-	bool copy;
-	switch (lastListBox)
-	{
-	case 0:
-		copy = 0;
-		EndDialog((HWND)lpParam, LOWORD(IDCANCEL));
-		break;
-	case 1:
-		copy = 1;
-		_tcscpy_s(lpExistingFileName, path1);
-		_tcscat_s(lpExistingFileName, selectedFile1);
-		_tcscpy_s(lpNewFileName, path2);
-		_tcscat_s(lpNewFileName, selectedFile1);
-		break;
-	case 2:
-		copy = 1;
-		_tcscpy_s(lpExistingFileName, path2);
-		_tcscat_s(lpExistingFileName, selectedFile2);
-		_tcscpy_s(lpNewFileName, path1);
-		_tcscat_s(lpNewFileName, selectedFile2);
-		break;
-	default:
-		copy = 0;
-	}
-	if (copy)
-	{
-		r = CopyFileEx(lpExistingFileName, lpNewFileName, CopyProgressRoutine, GetDlgItem((HWND)lpParam, IDC_PROGRESS1), 0, COPY_FILE_FAIL_IF_EXISTS);
-	}
-	EndDialog((HWND)lpParam, LOWORD(r));
-	return r;
-}
-
-DWORD CALLBACK CopyProgressRoutine(
-	_In_      LARGE_INTEGER TotalFileSize,
-	_In_      LARGE_INTEGER TotalBytesTransferred,
-	_In_      LARGE_INTEGER StreamSize,
-	_In_      LARGE_INTEGER StreamBytesTransferred,
-	_In_      DWORD dwStreamNumber,
-	_In_      DWORD dwCallbackReason,
-	_In_      HANDLE hSourceFile,
-	_In_      HANDLE hDestinationFile,
-	_In_opt_  LPVOID lpData
-	)
-{
-	switch (dwCallbackReason)
-	{
-	case CALLBACK_CHUNK_FINISHED:
-		SendMessage((HWND)lpData, PBM_SETPOS, (TotalBytesTransferred.QuadPart * 100 / TotalFileSize.QuadPart), 0);
-		UpdateWindow((HWND)lpData);
-		break;
-	}
-	return PROGRESS_CONTINUE;
-}
 */
 HWND CreateListBox(int x, int y, int width, int heigth, HWND hWnd, HMENU id)
 {
@@ -1064,12 +994,20 @@ LRESULT CALLBACK WndProcListView1(HWND hWnd, UINT message, WPARAM wParam, LPARAM
 
 		switch(wParam)
 		{
+		case VK_F2:
+			if (DialogBox(hInst, MAKEINTRESOURCE(IDD_DIALOG_RENAME), hWnd, DialogRename1) == 0)
+			{
+				LoadFileList(hWndListBox1, path1);
+			}
+			break;
+
 		case VK_F5:
-			//if (DialogBox(hInst, MAKEINTRESOURCE(IDD_DIALOG_PROGRESS_BAR), hWnd, Dialog_Progress_Bar) == 0)
 			if(FileOperation(from,to,FO_COPY) == 0)
 			{
 				LoadFileList(hWndListBox2, path2);
 			}
+			break;
+
 		case VK_F6:
 			if(FileOperation(from,to,FO_MOVE) == 0)
 			{
@@ -1077,6 +1015,7 @@ LRESULT CALLBACK WndProcListView1(HWND hWnd, UINT message, WPARAM wParam, LPARAM
 				LoadFileList(hWndListBox2, path2);
 			}
 			break;
+
 		case VK_DELETE:
 		case VK_F8:
 			if(FileOperation(from,0,FO_DELETE) == 0)
@@ -1110,20 +1049,19 @@ LRESULT CALLBACK WndProcListView2(HWND hWnd, UINT message, WPARAM wParam, LPARAM
 		switch(wParam)
 		{
 		case VK_F2:
-			_tcscpy_s(to, path2);
-			_tcscat_s(to, _T("blablabla"));
-			//if (DialogBox(hInst, MAKEINTRESOURCE(IDD_DIALOG_PROGRESS_BAR), hWnd, Dialog_Progress_Bar) == 0)
-			if(FileOperation(from,to,FO_RENAME) == 0)
+			if (DialogBox(hInst, MAKEINTRESOURCE(IDD_DIALOG_RENAME), hWnd, DialogRename2) == 0)
 			{
 				LoadFileList(hWndListBox2, path2);
 			}
+			break;
 
 		case VK_F5:
-			//if (DialogBox(hInst, MAKEINTRESOURCE(IDD_DIALOG_PROGRESS_BAR), hWnd, Dialog_Progress_Bar) == 0)
 			if(FileOperation(from,to,FO_COPY) == 0)
 			{
 				LoadFileList(hWndListBox1, path1);
 			}
+			break;
+
 		case VK_F6:
 			if(FileOperation(from,to,FO_MOVE) == 0)
 			{
@@ -1131,6 +1069,7 @@ LRESULT CALLBACK WndProcListView2(HWND hWnd, UINT message, WPARAM wParam, LPARAM
 				LoadFileList(hWndListBox2, path2);
 			}
 			break;
+
 		case VK_DELETE:
 		case VK_F8:
 			if(FileOperation(from,0,FO_DELETE) == 0)
@@ -1145,4 +1084,68 @@ LRESULT CALLBACK WndProcListView2(HWND hWnd, UINT message, WPARAM wParam, LPARAM
 	default:
 		return CallWindowProc(origWndProcListView, hWnd, message, wParam, lParam); 
 	}
+}
+
+INT_PTR CALLBACK DialogRename1(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
+{
+	switch (message)
+	{
+	case WM_INITDIALOG:
+		SetWindowText(GetDlgItem(hDlg, ID_DEDIT),selectedFile1);
+		return (INT_PTR)TRUE;
+	
+	case WM_COMMAND:
+		switch(wParam) 
+		{
+		case ID_DBUTTON_OK:
+			TCHAR from[MAX_PATH], to[MAX_PATH], buf[MAX_PATH];
+
+			buf[GetWindowText(GetDlgItem(hDlg, ID_DEDIT),buf,MAX_PATH)] = 0;
+
+			_tcscpy_s(from, path1);
+			_tcscat_s(from, selectedFile1);
+			_tcscpy_s(to, path1);
+			_tcscat_s(to, buf);
+
+			EndDialog(hDlg, LOWORD(FileOperation(from,to,FO_RENAME)));
+			return (INT_PTR)TRUE;
+		case ID_DBUTTON_CANCEL:
+			EndDialog(hDlg, LOWORD(wParam));
+			return (INT_PTR)TRUE;
+		}
+		break;
+	}
+	return (INT_PTR)FALSE;
+}
+
+INT_PTR CALLBACK DialogRename2(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
+{
+	switch (message)
+	{
+	case WM_INITDIALOG:
+		SetWindowText(GetDlgItem(hDlg, ID_DEDIT),selectedFile2);
+		return (INT_PTR)TRUE;
+	
+	case WM_COMMAND:
+		switch(wParam) 
+		{
+		case ID_DBUTTON_OK:
+			TCHAR from[MAX_PATH], to[MAX_PATH], buf[MAX_PATH];
+
+			buf[GetWindowText(GetDlgItem(hDlg, ID_DEDIT),buf,MAX_PATH)] = 0;
+
+			_tcscpy_s(from, path2);
+			_tcscat_s(from, selectedFile2);
+			_tcscpy_s(to, path2);
+			_tcscat_s(to, buf);
+
+			EndDialog(hDlg, LOWORD(FileOperation(from,to,FO_RENAME)));
+			return (INT_PTR)TRUE;
+		case ID_DBUTTON_CANCEL:
+			EndDialog(hDlg, LOWORD(wParam));
+			return (INT_PTR)TRUE;
+		}
+		break;
+	}
+	return (INT_PTR)FALSE;
 }
