@@ -193,17 +193,20 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 	TCHAR *selectedFile = 0;
 	TCHAR selectedFileSize[MAX_PATH];
 	TCHAR fullPathToFile[MAX_PATH];
-	int k = 0;
+	
 	bool reloadFileList = 1;
 	HWND hWndListBox = 0;
 	HWND hWndEdit = 0;
 	TCHAR *path = 0;
-	TCHAR *disk, *disk_start;
-	int x, y;
-
+	
 	switch (message)
 	{
 	case WM_CREATE:	
+		int x, y;
+		int k;
+		int dx, width;
+		TCHAR *disk, *disk_start;
+
 		InitCommonControls();
 
 		disk_start = disk = new TCHAR[256];
@@ -214,6 +217,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 
 		x = 10;
 		y = 10;
+		dx = 200;
+		width = 170;
 		k = _tcslen(disk) + 1;
 		while (*disk != '\0')
 		{
@@ -274,29 +279,29 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		SetWindowText(hWndEdit2, path2);
 
 		CreateWindow(_T("BUTTON"), _T("F2 Переименование"), WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON,
-			x, y, 150, 30, hWnd, (HMENU)ID_BUTTON_RENAME, NULL, NULL);
+			x, y, width, 30, hWnd, (HMENU)ID_BUTTON_RENAME, NULL, NULL);
 
-		x += 160;
+		x += dx;
 
 		CreateWindow(_T("BUTTON"), _T("F5 Копирование"), WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON,
-			x, y, 150, 30, hWnd, (HMENU)ID_BUTTON_COPY, NULL, NULL);
+			x, y, width, 30, hWnd, (HMENU)ID_BUTTON_COPY, NULL, NULL);
 
-		x += 160;
+		x += dx;
 
 		CreateWindow(_T("BUTTON"), _T("F6 Перемещение"), WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON,
-			x, y, 150, 30, hWnd, (HMENU)ID_BUTTON_MOVE, NULL, NULL);
+			x, y, width, 30, hWnd, (HMENU)ID_BUTTON_MOVE, NULL, NULL);
 
-		x += 160;
+		x += dx;
 
 		CreateWindow(_T("BUTTON"), _T("F7 Каталог"), WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON,
-			x, y, 150, 30, hWnd, (HMENU)ID_BUTTON_DIR_CREATE, NULL, NULL);
+			x, y, width, 30, hWnd, (HMENU)ID_BUTTON_DIR_CREATE, NULL, NULL);
 
-		x += 160;
+		x += dx;
 
 		CreateWindow(_T("BUTTON"), _T("F8 Удаление"), WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON,
-			x, y, 150, 30, hWnd, (HMENU)ID_BUTTON_DELETE, NULL, NULL);
+			x, y, width, 30, hWnd, (HMENU)ID_BUTTON_DELETE, NULL, NULL);
 
-		x += 160;
+		x += dx;
 
 		break;
 	case WM_NOTIFY:
