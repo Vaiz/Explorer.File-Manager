@@ -73,6 +73,8 @@ LRESULT CALLBACK	WndProcListView1(HWND hWnd, UINT message, WPARAM wParam, LPARAM
 LRESULT CALLBACK	WndProcListView2(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
 INT_PTR CALLBACK	DialogRename1(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
 INT_PTR CALLBACK	DialogRename2(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
+INT_PTR CALLBACK	DialogCreateDir1(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
+INT_PTR CALLBACK	DialogCreateDir2(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
 
 int APIENTRY _tWinMain(_In_ HINSTANCE hInstance,
 					   _In_opt_ HINSTANCE hPrevInstance,
@@ -515,9 +517,23 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		case IDM_ABOUT:
 			DialogBox(hInst, MAKEINTRESOURCE(IDD_ABOUTBOX), hWnd, About);
 			break;
+
 		case IDM_EXIT:
 			DestroyWindow(hWnd);
 			break;
+
+		case ID_BUTTON_RENAME:
+			switch (lastListBox)
+			{
+			case 1:
+				SendMessage(hWndListBox1,WM_KEYDOWN,VK_F2,0);
+				break;
+			case 2:
+				SendMessage(hWndListBox2,WM_KEYDOWN,VK_F2,0);
+				break;
+			}
+			break;
+
 		case ID_BUTTON_COPY:
 			switch (lastListBox)
 			{
@@ -528,6 +544,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 				SendMessage(hWndListBox2,WM_KEYDOWN,VK_F5,0);
 				break;
 			}
+			break;
 
 		case ID_BUTTON_MOVE:
 			switch (lastListBox)
@@ -539,6 +556,19 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 				SendMessage(hWndListBox2,WM_KEYDOWN,VK_F6,0);
 				break;
 			}
+			break;
+
+		case ID_BUTTON_DIR_CREATE:
+			switch (lastListBox)
+			{
+			case 1:
+				SendMessage(hWndListBox1,WM_KEYDOWN,VK_F7,0);
+				break;
+			case 2:
+				SendMessage(hWndListBox2,WM_KEYDOWN,VK_F7,0);
+				break;
+			}
+			break;
 
 		case ID_BUTTON_DELETE:
 			switch (lastListBox)
@@ -550,9 +580,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 				SendMessage(hWndListBox2,WM_KEYDOWN,VK_F8,0);
 				break;
 			}
-
-
 			break;
+
 		default:
 			if (wmId >= ID_BUTTON_START && wmId < id_button)
 			{
@@ -1015,6 +1044,13 @@ LRESULT CALLBACK WndProcListView1(HWND hWnd, UINT message, WPARAM wParam, LPARAM
 				LoadFileList(hWndListBox2, path2);
 			}
 			break;
+	
+		case VK_F7:
+			if (DialogBox(hInst, MAKEINTRESOURCE(IDD_DIALOG_CREATE_DIR), hWnd, DialogCreateDir1) == 1)
+			{
+				LoadFileList(hWndListBox1, path1);
+			}
+			break;
 
 		case VK_DELETE:
 		case VK_F8:
@@ -1070,6 +1106,13 @@ LRESULT CALLBACK WndProcListView2(HWND hWnd, UINT message, WPARAM wParam, LPARAM
 			}
 			break;
 
+		case VK_F7:
+			if (DialogBox(hInst, MAKEINTRESOURCE(IDD_DIALOG_CREATE_DIR), hWnd, DialogCreateDir2) == 1)
+			{
+				LoadFileList(hWndListBox2, path2);
+			}
+			break;
+
 		case VK_DELETE:
 		case VK_F8:
 			if(FileOperation(from,0,FO_DELETE) == 0)
@@ -1097,7 +1140,7 @@ INT_PTR CALLBACK DialogRename1(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
 	case WM_COMMAND:
 		switch(wParam) 
 		{
-		case ID_DBUTTON_OK:
+		case IDOK:
 			TCHAR from[MAX_PATH], to[MAX_PATH], buf[MAX_PATH];
 
 			buf[GetWindowText(GetDlgItem(hDlg, ID_DEDIT),buf,MAX_PATH)] = 0;
@@ -1109,7 +1152,7 @@ INT_PTR CALLBACK DialogRename1(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
 
 			EndDialog(hDlg, LOWORD(FileOperation(from,to,FO_RENAME)));
 			return (INT_PTR)TRUE;
-		case ID_DBUTTON_CANCEL:
+		case IDCANCEL:
 			EndDialog(hDlg, LOWORD(wParam));
 			return (INT_PTR)TRUE;
 		}
@@ -1129,7 +1172,7 @@ INT_PTR CALLBACK DialogRename2(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
 	case WM_COMMAND:
 		switch(wParam) 
 		{
-		case ID_DBUTTON_OK:
+		case IDOK:
 			TCHAR from[MAX_PATH], to[MAX_PATH], buf[MAX_PATH];
 
 			buf[GetWindowText(GetDlgItem(hDlg, ID_DEDIT),buf,MAX_PATH)] = 0;
@@ -1141,8 +1184,66 @@ INT_PTR CALLBACK DialogRename2(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
 
 			EndDialog(hDlg, LOWORD(FileOperation(from,to,FO_RENAME)));
 			return (INT_PTR)TRUE;
-		case ID_DBUTTON_CANCEL:
+		case IDCANCEL:
 			EndDialog(hDlg, LOWORD(wParam));
+			return (INT_PTR)TRUE;
+		}
+		break;
+	}
+	return (INT_PTR)FALSE;
+}
+
+INT_PTR CALLBACK DialogCreateDir1(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
+{
+	switch (message)
+	{
+	case WM_INITDIALOG:
+		return (INT_PTR)TRUE;
+	
+	case WM_COMMAND:
+		switch(wParam) 
+		{
+		case IDOK:
+			TCHAR to[MAX_PATH], buf[MAX_PATH];
+
+			buf[GetWindowText(GetDlgItem(hDlg, ID_DEDIT),buf,MAX_PATH)] = 0;
+
+			_tcscpy_s(to, path1);
+			_tcscat_s(to, buf);
+
+			EndDialog(hDlg, LOWORD(CreateDirectory(to,0)));
+			return (INT_PTR)TRUE;
+		case IDCANCEL:
+			EndDialog(hDlg, LOWORD(0));
+			return (INT_PTR)TRUE;
+		}
+		break;
+	}
+	return (INT_PTR)FALSE;
+}
+
+INT_PTR CALLBACK DialogCreateDir2(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
+{
+	switch (message)
+	{
+	case WM_INITDIALOG:
+		return (INT_PTR)TRUE;
+	
+	case WM_COMMAND:
+		switch(wParam) 
+		{
+		case IDOK:
+			TCHAR to[MAX_PATH], buf[MAX_PATH];
+
+			buf[GetWindowText(GetDlgItem(hDlg, ID_DEDIT),buf,MAX_PATH)] = 0;
+
+			_tcscpy_s(to, path2);
+			_tcscat_s(to, buf);
+
+			EndDialog(hDlg, LOWORD(CreateDirectory(to,0)));
+			return (INT_PTR)TRUE;
+		case IDCANCEL:
+			EndDialog(hDlg, LOWORD(0));
 			return (INT_PTR)TRUE;
 		}
 		break;
