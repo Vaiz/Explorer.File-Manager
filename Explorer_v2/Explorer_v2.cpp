@@ -21,7 +21,8 @@ TCHAR path1[MAX_PATH], path2[MAX_PATH];
 TCHAR selectedFile1[MAX_PATH], selectedFile2[MAX_PATH];
 int lastListBox = 0;
 int id_button = ID_BUTTON_START;
-HANDLE copyThread;
+bool cancelCopy;		// флаг для потока копирования
+//HANDLE copyThread;
 
 typedef struct _REPARSE_DATA_BUFFER
 {
@@ -66,7 +67,7 @@ INT_PTR CALLBACK	About(HWND, UINT, WPARAM, LPARAM);
 int					FileOperation(TCHAR *from, TCHAR *to, UINT func);
 HWND				CreateListBox(int x, int y, int width, int heigth, HWND hWnd, HMENU id);
 void				LoadFileList(HWND hWndlistBox, TCHAR *path);
-int CALLBACK		SortUpDir(LPARAM lParam1, LPARAM lParam2, LPARAM lParamSort);
+int		CALLBACK	SortUpDir(LPARAM lParam1, LPARAM lParam2, LPARAM lParamSort);
 void				AddIconToListBox(HWND hWndListBox, int size, TCHAR c_dir[MAX_PATH]);
 void				DisplayError(TCHAR *header);
 LRESULT CALLBACK	WndProcListView1(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
@@ -75,6 +76,19 @@ INT_PTR CALLBACK	DialogRename1(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
 INT_PTR CALLBACK	DialogRename2(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
 INT_PTR CALLBACK	DialogCreateDir1(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
 INT_PTR CALLBACK	DialogCreateDir2(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
+INT_PTR CALLBACK	Dialog_Progress_Bar(HWND, UINT, WPARAM, LPARAM);
+DWORD	CALLBACK	CopyProgressRoutine(
+	_In_ LARGE_INTEGER TotalFileSize,
+	_In_ LARGE_INTEGER TotalBytesTransferred,
+	_In_ LARGE_INTEGER StreamSize,
+	_In_ LARGE_INTEGER StreamBytesTransferred,
+	_In_ DWORD dwStreamNumber,
+	_In_ DWORD dwCallbackReason,
+	_In_ HANDLE hSourceFile,
+	_In_ HANDLE hDestinationFile,
+	_In_opt_ LPVOID lpData
+	);
+DWORD WINAPI	ThreadCopy(LPVOID lpParam);
 
 int APIENTRY _tWinMain(_In_ HINSTANCE hInstance,
 					   _In_opt_ HINSTANCE hPrevInstance,
@@ -955,7 +969,8 @@ LRESULT CALLBACK WndProcListView1(HWND hWnd, UINT message, WPARAM wParam, LPARAM
 			break;
 
 		case VK_F5:
-			if(FileOperation(from,to,FO_COPY) == 0)
+			//if(FileOperation(from,to,FO_COPY) == 0)
+			if (DialogBox(hInst, MAKEINTRESOURCE(IDD_DIALOG_COPY_THREAD), hWnd, Dialog_Progress_Bar) != 0)
 			{
 				LoadFileList(hWndListBox2, path2);
 			}
@@ -989,6 +1004,7 @@ LRESULT CALLBACK WndProcListView1(HWND hWnd, UINT message, WPARAM wParam, LPARAM
 	default:
 		return CallWindowProc(origWndProcListView, hWnd, message, wParam, lParam); 
 	}
+	return 0;
 }
 
 LRESULT CALLBACK WndProcListView2(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
@@ -1016,7 +1032,8 @@ LRESULT CALLBACK WndProcListView2(HWND hWnd, UINT message, WPARAM wParam, LPARAM
 			break;
 
 		case VK_F5:
-			if(FileOperation(from,to,FO_COPY) == 0)
+			//if(FileOperation(from,to,FO_COPY) == 0)
+			if (DialogBox(hInst, MAKEINTRESOURCE(IDD_DIALOG_COPY_THREAD), hWnd, Dialog_Progress_Bar) != 0)
 			{
 				LoadFileList(hWndListBox1, path1);
 			}
@@ -1051,6 +1068,7 @@ LRESULT CALLBACK WndProcListView2(HWND hWnd, UINT message, WPARAM wParam, LPARAM
 	default:
 		return CallWindowProc(origWndProcListView, hWnd, message, wParam, lParam); 
 	}
+	return 0;
 }
 
 INT_PTR CALLBACK DialogRename1(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
@@ -1173,4 +1191,91 @@ INT_PTR CALLBACK DialogCreateDir2(HWND hDlg, UINT message, WPARAM wParam, LPARAM
 		break;
 	}
 	return (INT_PTR)FALSE;
+}
+
+INT_PTR CALLBACK Dialog_Progress_Bar(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
+{
+	switch (message)
+	{
+	case WM_INITDIALOG:
+
+		CreateThread(
+			0,	// default security attributes
+			0, // use default stack size
+			ThreadCopy,	// thread function name
+			hDlg,	// argument to thread function
+			0, // use default creation flags
+			0);
+		return (INT_PTR)TRUE;
+	case WM_COMMAND:
+		switch(wParam)
+		{
+		case IDCANCEL:
+			cancelCopy = 1;
+			EndDialog(hDlg, LOWORD(0));
+			return (INT_PTR)TRUE;
+		}
+		break;
+	}
+	return (INT_PTR)FALSE;
+}
+
+DWORD WINAPI ThreadCopy(LPVOID lpParam)
+{
+	TCHAR lpExistingFileName[MAX_PATH];
+	TCHAR lpNewFileName[MAX_PATH];
+	DWORD r = 0;
+	bool copy;
+	switch (lastListBox)
+	{
+	case 0:
+		copy = 0;
+		EndDialog((HWND)lpParam, LOWORD(IDCANCEL));
+		break;
+	case 1:
+		copy = 1;
+		_tcscpy_s(lpExistingFileName, path1);
+		_tcscat_s(lpExistingFileName, selectedFile1);
+		_tcscpy_s(lpNewFileName, path2);
+		_tcscat_s(lpNewFileName, selectedFile1);
+		break;
+	case 2:
+		copy = 1;
+		_tcscpy_s(lpExistingFileName, path2);
+		_tcscat_s(lpExistingFileName, selectedFile2);
+		_tcscpy_s(lpNewFileName, path1);
+		_tcscat_s(lpNewFileName, selectedFile2);
+		break;
+	default:
+		copy = 0;
+	}
+	if (copy)
+	{
+		cancelCopy = 0;
+		r = CopyFileEx(lpExistingFileName, lpNewFileName, CopyProgressRoutine, GetDlgItem((HWND)lpParam, ID_DPROGRESSBAR), (LPBOOL)&cancelCopy, COPY_FILE_FAIL_IF_EXISTS);
+	}
+	EndDialog((HWND)lpParam, LOWORD(r));
+	return r;
+}
+
+DWORD CALLBACK CopyProgressRoutine(
+	_In_ LARGE_INTEGER TotalFileSize,
+	_In_ LARGE_INTEGER TotalBytesTransferred,
+	_In_ LARGE_INTEGER StreamSize,
+	_In_ LARGE_INTEGER StreamBytesTransferred,
+	_In_ DWORD dwStreamNumber,
+	_In_ DWORD dwCallbackReason,
+	_In_ HANDLE hSourceFile,
+	_In_ HANDLE hDestinationFile,
+	_In_opt_ LPVOID lpData
+	)
+{
+	switch (dwCallbackReason)
+	{
+	case CALLBACK_CHUNK_FINISHED:
+		SendMessage((HWND)lpData, PBM_SETPOS, (TotalBytesTransferred.QuadPart * 100 / TotalFileSize.QuadPart), 0);
+		UpdateWindow((HWND)lpData);
+		break;
+	}
+	return PROGRESS_CONTINUE;
 }
