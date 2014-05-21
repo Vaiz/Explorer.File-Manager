@@ -19,9 +19,10 @@ HWND hWndProgressBar;
 WNDPROC origWndProcListView;
 TCHAR path1[MAX_PATH], path2[MAX_PATH];
 TCHAR selectedFile1[MAX_PATH], selectedFile2[MAX_PATH];
-int lastListBox = 0;
+int lastListBox = 0;	// побитно |1й листбокс|2й листбокс|файл|папка|ссылка|000|
 int id_button = ID_BUTTON_START;
 bool cancelCopy;		// флаг для потока копирования
+LARGE_INTEGER dirSize, copySize;
 //HANDLE copyThread;
 
 typedef struct _REPARSE_DATA_BUFFER
@@ -76,8 +77,8 @@ INT_PTR CALLBACK	DialogRename1(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
 INT_PTR CALLBACK	DialogRename2(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
 INT_PTR CALLBACK	DialogCreateDir1(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
 INT_PTR CALLBACK	DialogCreateDir2(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
-INT_PTR CALLBACK	Dialog_Progress_Bar(HWND, UINT, WPARAM, LPARAM);
-DWORD	CALLBACK	CopyProgressRoutine(
+INT_PTR CALLBACK	Dialog_Copy_File(HWND, UINT, WPARAM, LPARAM);
+DWORD	CALLBACK	CopyProgressRoutineForFile(
 	_In_ LARGE_INTEGER TotalFileSize,
 	_In_ LARGE_INTEGER TotalBytesTransferred,
 	_In_ LARGE_INTEGER StreamSize,
@@ -88,7 +89,22 @@ DWORD	CALLBACK	CopyProgressRoutine(
 	_In_ HANDLE hDestinationFile,
 	_In_opt_ LPVOID lpData
 	);
-DWORD WINAPI	ThreadCopy(LPVOID lpParam);
+DWORD WINAPI		ThreadCopyForFile(LPVOID lpParam);
+LARGE_INTEGER		GetFolderSize(TCHAR path[MAX_PATH]);
+INT_PTR CALLBACK	Dialog_Copy_Dir(HWND, UINT, WPARAM, LPARAM);
+DWORD WINAPI		ThreadCopyForDir(LPVOID lpParam);
+DWORD CALLBACK		CopyProgressRoutineForDir(
+	_In_ LARGE_INTEGER TotalFileSize,
+	_In_ LARGE_INTEGER TotalBytesTransferred,
+	_In_ LARGE_INTEGER StreamSize,
+	_In_ LARGE_INTEGER StreamBytesTransferred,
+	_In_ DWORD dwStreamNumber,
+	_In_ DWORD dwCallbackReason,
+	_In_ HANDLE hSourceFile,
+	_In_ HANDLE hDestinationFile,
+	_In_opt_ LPVOID lpData
+	);
+bool				CopyFolder(TCHAR pathFrom[MAX_PATH], TCHAR pathTo[MAX_PATH], HWND ProgressBar);
 
 int APIENTRY _tWinMain(_In_ HINSTANCE hInstance,
 					   _In_opt_ HINSTANCE hPrevInstance,
@@ -327,12 +343,12 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			case ID_LISTBOX_1:
 				hWndListBox = hWndListBox1;
 				selectedFile = selectedFile1;
-				lastListBox = 1; 
+				lastListBox = 0x01; 
 				break;
 			case ID_LISTBOX_2:
 				hWndListBox = hWndListBox2;
 				selectedFile = selectedFile2;
-				lastListBox = 2;
+				lastListBox = 0x02;
 				break;
 			default:
 				break;
@@ -340,6 +356,13 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			if (hWndListBox)
 			{
 				ListView_GetItemText(lpnmHdr->hwndFrom, pnmLV->iItem, 0, selectedFile, MAX_PATH);
+				if (_tcscmp(selectedFile, _T("..")) && _tcscmp(selectedFile, _T(".")))
+				{
+					ListView_GetItemText(lpnmHdr->hwndFrom, pnmLV->iItem, 1, selectedFileSize, MAX_PATH);
+					if (_tcscmp(selectedFileSize, _T("<Папка>")) == 0) lastListBox |= 1 << 3;
+					else if (_tcscmp(selectedFileSize, _T("<Ссылка>")) == 0) lastListBox |= 1 << 4;
+					else lastListBox |= 1 << 2;
+				}
 			}
 			break;
 			//		case NM_RETURN:
@@ -969,10 +992,18 @@ LRESULT CALLBACK WndProcListView1(HWND hWnd, UINT message, WPARAM wParam, LPARAM
 			break;
 
 		case VK_F5:
-			//if(FileOperation(from,to,FO_COPY) == 0)
-			if (DialogBox(hInst, MAKEINTRESOURCE(IDD_DIALOG_COPY_THREAD), hWnd, Dialog_Progress_Bar) != 0)
+			switch(lastListBox >> 2)
 			{
+			case 1:		// Файл
+				if (DialogBox(hInst, MAKEINTRESOURCE(IDD_DIALOG_COPY_THREAD), hWnd, Dialog_Copy_File) != 0)
+				{
+					LoadFileList(hWndListBox2, path2);
+				}
+				break;
+			case 2:		// папка
+				DialogBox(hInst, MAKEINTRESOURCE(IDD_DIALOG_COPY_THREAD), hWnd, Dialog_Copy_Dir);
 				LoadFileList(hWndListBox2, path2);
+				break;
 			}
 			break;
 
@@ -1032,10 +1063,18 @@ LRESULT CALLBACK WndProcListView2(HWND hWnd, UINT message, WPARAM wParam, LPARAM
 			break;
 
 		case VK_F5:
-			//if(FileOperation(from,to,FO_COPY) == 0)
-			if (DialogBox(hInst, MAKEINTRESOURCE(IDD_DIALOG_COPY_THREAD), hWnd, Dialog_Progress_Bar) != 0)
+			switch(lastListBox >> 2)
 			{
+			case 1:		// Файл
+				if (DialogBox(hInst, MAKEINTRESOURCE(IDD_DIALOG_COPY_THREAD), hWnd, Dialog_Copy_File) != 0)
+				{
+					LoadFileList(hWndListBox1, path1);
+				}
+				break;
+			case 2:		// папка
+				DialogBox(hInst, MAKEINTRESOURCE(IDD_DIALOG_COPY_THREAD), hWnd, Dialog_Copy_Dir);
 				LoadFileList(hWndListBox1, path1);
+				break;
 			}
 			break;
 
@@ -1193,16 +1232,15 @@ INT_PTR CALLBACK DialogCreateDir2(HWND hDlg, UINT message, WPARAM wParam, LPARAM
 	return (INT_PTR)FALSE;
 }
 
-INT_PTR CALLBACK Dialog_Progress_Bar(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
+INT_PTR CALLBACK Dialog_Copy_File(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 {
 	switch (message)
 	{
 	case WM_INITDIALOG:
-
 		CreateThread(
 			0,	// default security attributes
 			0, // use default stack size
-			ThreadCopy,	// thread function name
+			ThreadCopyForFile,	// thread function name
 			hDlg,	// argument to thread function
 			0, // use default creation flags
 			0);
@@ -1220,13 +1258,13 @@ INT_PTR CALLBACK Dialog_Progress_Bar(HWND hDlg, UINT message, WPARAM wParam, LPA
 	return (INT_PTR)FALSE;
 }
 
-DWORD WINAPI ThreadCopy(LPVOID lpParam)
+DWORD WINAPI ThreadCopyForFile(LPVOID lpParam)
 {
 	TCHAR lpExistingFileName[MAX_PATH];
 	TCHAR lpNewFileName[MAX_PATH];
 	DWORD r = 0;
 	bool copy;
-	switch (lastListBox)
+	switch (lastListBox & 0x03)
 	{
 	case 0:
 		copy = 0;
@@ -1252,13 +1290,14 @@ DWORD WINAPI ThreadCopy(LPVOID lpParam)
 	if (copy)
 	{
 		cancelCopy = 0;
-		r = CopyFileEx(lpExistingFileName, lpNewFileName, CopyProgressRoutine, GetDlgItem((HWND)lpParam, ID_DPROGRESSBAR), (LPBOOL)&cancelCopy, COPY_FILE_FAIL_IF_EXISTS);
+		r = CopyFileEx(lpExistingFileName, lpNewFileName, CopyProgressRoutineForFile, GetDlgItem((HWND)lpParam, ID_DPROGRESSBAR), (LPBOOL)&cancelCopy, COPY_FILE_FAIL_IF_EXISTS);
+		if(!r)	 DisplayError(_T("Ошибка при копировании."));
 	}
 	EndDialog((HWND)lpParam, LOWORD(r));
 	return r;
 }
 
-DWORD CALLBACK CopyProgressRoutine(
+DWORD CALLBACK CopyProgressRoutineForFile(
 	_In_ LARGE_INTEGER TotalFileSize,
 	_In_ LARGE_INTEGER TotalBytesTransferred,
 	_In_ LARGE_INTEGER StreamSize,
@@ -1278,4 +1317,188 @@ DWORD CALLBACK CopyProgressRoutine(
 		break;
 	}
 	return PROGRESS_CONTINUE;
+}
+
+LARGE_INTEGER GetFolderSize(TCHAR path[MAX_PATH])
+{
+	HANDLE Handle;  
+	WIN32_FIND_DATA FindData;
+	LARGE_INTEGER Result;
+	LARGE_INTEGER tmp;
+	Result.QuadPart = 0;
+	_tcscat_s(path, MAX_PATH, _T("*"));
+	Handle = FindFirstFile(path, &FindData);
+	if (Handle == INVALID_HANDLE_VALUE)
+	{		
+		return Result;
+	}		
+	do
+	{
+		if(_tcscmp(FindData.cFileName,L".") && _tcscmp(FindData.cFileName,L".."))
+		{
+			if(FindData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+			{				
+				tmp.QuadPart = 0;
+				TCHAR path2[MAX_PATH];
+				_tcscpy_s(path2,path);
+				path2[_tcslen(path2)-1] = 0;
+				_tcscat_s(path2, FindData.cFileName);
+				_tcscat_s(path2, _T("\\")); 
+				tmp = GetFolderSize(path2);
+				Result.QuadPart = Result.QuadPart + tmp.QuadPart;	
+			}
+			else
+			{
+				tmp.QuadPart = 0;
+				tmp.QuadPart = ((DWORDLONG)FindData.nFileSizeHigh<<32) + FindData.nFileSizeLow;
+				Result.QuadPart = Result.QuadPart + tmp.QuadPart;				
+			}
+		}
+	}
+	while(FindNextFile(Handle, &FindData) != 0);
+	FindClose(Handle);
+	return Result;
+}
+
+INT_PTR CALLBACK Dialog_Copy_Dir(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
+{
+	switch (message)
+	{
+	case WM_INITDIALOG:
+		CreateThread(
+			0,	// default security attributes
+			0, // use default stack size
+			ThreadCopyForDir,	// thread function name
+			hDlg,	// argument to thread function
+			0, // use default creation flags
+			0);
+		return (INT_PTR)TRUE;
+	case WM_COMMAND:
+		switch(wParam)
+		{
+		case IDCANCEL:
+			cancelCopy = 1;
+			EndDialog(hDlg, LOWORD(0));
+			return (INT_PTR)TRUE;
+		}
+		break;
+	}
+	return (INT_PTR)FALSE;
+}
+
+DWORD WINAPI ThreadCopyForDir(LPVOID lpParam)
+{
+	TCHAR lpExistingFileName[MAX_PATH];
+	TCHAR lpNewFileName[MAX_PATH];
+	DWORD r = 0;
+	bool copy;
+	switch (lastListBox & 0x03)
+	{
+	case 0:
+		copy = 0;
+		EndDialog((HWND)lpParam, LOWORD(IDCANCEL));
+		break;
+	case 1:
+		copy = 1;
+		_tcscpy_s(lpExistingFileName, path1);
+		_tcscat_s(lpExistingFileName, selectedFile1);
+		_tcscat_s(lpExistingFileName, _T("\\"));
+		_tcscpy_s(lpNewFileName, path2);
+		_tcscat_s(lpNewFileName, selectedFile1);
+		break;
+	case 2:
+		copy = 1;
+		_tcscpy_s(lpExistingFileName, path2);
+		_tcscat_s(lpExistingFileName, selectedFile2);
+		_tcscat_s(lpExistingFileName, _T("\\"));
+		_tcscpy_s(lpNewFileName, path1);
+		_tcscat_s(lpNewFileName, selectedFile2);
+		break;
+	default:
+		copy = 0;
+	}
+	if (copy)
+	{
+		cancelCopy = 0;		
+		copySize.QuadPart = 0;
+		dirSize = GetFolderSize(lpExistingFileName);
+		
+		r = CopyFolder(lpExistingFileName, lpNewFileName,GetDlgItem((HWND)lpParam, ID_DPROGRESSBAR));
+	}
+	EndDialog((HWND)lpParam, LOWORD(r));
+	return r;
+}
+
+DWORD CALLBACK CopyProgressRoutineForDir(
+	_In_ LARGE_INTEGER TotalFileSize,
+	_In_ LARGE_INTEGER TotalBytesTransferred,
+	_In_ LARGE_INTEGER StreamSize,
+	_In_ LARGE_INTEGER StreamBytesTransferred,
+	_In_ DWORD dwStreamNumber,
+	_In_ DWORD dwCallbackReason,
+	_In_ HANDLE hSourceFile,
+	_In_ HANDLE hDestinationFile,
+	_In_opt_ LPVOID lpData
+	)
+{
+	switch (dwCallbackReason)
+	{
+	case CALLBACK_CHUNK_FINISHED:
+		SendMessage((HWND)lpData, PBM_SETPOS, ((TotalBytesTransferred.QuadPart + copySize.QuadPart) * 100 / dirSize.QuadPart), 0);
+		UpdateWindow((HWND)lpData);
+		break;
+	}
+	return PROGRESS_CONTINUE;
+}
+
+bool CopyFolder(TCHAR pathFrom[MAX_PATH], TCHAR pathTo[MAX_PATH], HWND ProgressBar)
+{
+	HANDLE Handle;  
+	WIN32_FIND_DATA FindData;
+
+	CreateDirectory(pathTo, 0);
+	_tcscat_s(pathTo, MAX_PATH, _T("\\")); 
+	
+	Handle = FindFirstFile(pathFrom, &FindData);
+	if (Handle == INVALID_HANDLE_VALUE)
+	{		
+		return 0;
+	}		
+	do
+	{
+		if(_tcscmp(FindData.cFileName,L".") && _tcscmp(FindData.cFileName,L".."))
+		{
+			if(FindData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+			{				
+				TCHAR pathFrom2[MAX_PATH], pathTo2[MAX_PATH];
+				_tcscpy_s(pathFrom2,pathFrom);				
+				pathFrom2[_tcslen(pathFrom2)-1] = 0;
+				_tcscat_s(pathFrom2, FindData.cFileName);
+				_tcscat_s(pathFrom2, _T("\\*")); 
+				
+				_tcscpy_s(pathTo2, pathTo);
+				_tcscat_s(pathTo2, FindData.cFileName);
+				//_tcscat_s(pathTo2, _T("\\")); 
+				
+				CopyFolder(pathFrom2, pathTo2, ProgressBar);
+			}
+			else
+			{
+				TCHAR lpExistingFileName[MAX_PATH];
+				TCHAR lpNewFileName[MAX_PATH];
+
+				_tcscpy_s(lpExistingFileName, pathFrom);
+				lpExistingFileName[_tcslen(lpExistingFileName) - 1] = 0;
+				_tcscat_s(lpExistingFileName, FindData.cFileName);
+				_tcscpy_s(lpNewFileName, pathTo);
+				_tcscat_s(lpNewFileName, FindData.cFileName);
+
+				if(CopyFileEx(lpExistingFileName, lpNewFileName, CopyProgressRoutineForDir, ProgressBar, (LPBOOL)&cancelCopy, COPY_FILE_FAIL_IF_EXISTS))
+					copySize.QuadPart = copySize.QuadPart + ((DWORDLONG)FindData.nFileSizeHigh<<32) + FindData.nFileSizeLow;				
+			}
+		}
+	}
+	while(FindNextFile(Handle, &FindData) != 0);
+	FindClose(Handle);
+	return 1;
 }
