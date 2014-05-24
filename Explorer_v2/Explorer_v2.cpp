@@ -65,7 +65,6 @@ ATOM				MyRegisterClass(HINSTANCE hInstance);
 BOOL				InitInstance(HINSTANCE, int);
 LRESULT CALLBACK	WndProc(HWND, UINT, WPARAM, LPARAM);
 INT_PTR CALLBACK	About(HWND, UINT, WPARAM, LPARAM);
-int					FileOperation(TCHAR *from, TCHAR *to, UINT func);
 HWND				CreateListBox(int x, int y, int width, int heigth, HWND hWnd, HMENU id);
 void				LoadFileList(HWND hWndlistBox, TCHAR *path);
 int		CALLBACK	SortUpDir(LPARAM lParam1, LPARAM lParam2, LPARAM lParamSort);
@@ -696,34 +695,6 @@ INT_PTR CALLBACK About(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 	return (INT_PTR)FALSE;
 }
 
-int FileOperation(TCHAR *from, TCHAR *to, UINT func)
-{
-	SHFILEOPSTRUCT shFileOpStr = {0};
-	int i;
-
-	i = 0;
-	while(from[i]) i++;
-	from[i+1] = 0;
-
-	if(to)
-	{
-		i = 0;
-		while(to[i]) i++;
-		to[i+1] = 0;
-	}
-
-	shFileOpStr.hwnd = 0;
-	shFileOpStr.wFunc = func;
-	shFileOpStr.pFrom = from;
-	shFileOpStr.pTo = to;
-	shFileOpStr.fFlags = FOF_NOCONFIRMMKDIR;  
-	shFileOpStr.fAnyOperationsAborted = 0;
-	shFileOpStr.hNameMappings = 0;
-	shFileOpStr.lpszProgressTitle = 0;
-
-	return SHFileOperation(&shFileOpStr);
-}
-
 HWND CreateListBox(int x, int y, int width, int heigth, HWND hWnd, HMENU id)
 {
 	HWND hWndListBox;
@@ -992,7 +963,7 @@ LRESULT CALLBACK WndProcListView1(HWND hWnd, UINT message, WPARAM wParam, LPARAM
 		switch(wParam)
 		{
 		case VK_F2:
-			if (DialogBox(hInst, MAKEINTRESOURCE(IDD_DIALOG_RENAME), hWnd, DialogRename1) == 0)
+			if (DialogBox(hInst, MAKEINTRESOURCE(IDD_DIALOG_RENAME), hWnd, DialogRename1))
 			{
 				LoadFileList(hWndListBox1, path1);
 			}
@@ -1080,7 +1051,7 @@ LRESULT CALLBACK WndProcListView2(HWND hWnd, UINT message, WPARAM wParam, LPARAM
 		switch(wParam)
 		{
 		case VK_F2:
-			if (DialogBox(hInst, MAKEINTRESOURCE(IDD_DIALOG_RENAME), hWnd, DialogRename2) == 0)
+			if (DialogBox(hInst, MAKEINTRESOURCE(IDD_DIALOG_RENAME), hWnd, DialogRename2))
 			{
 				LoadFileList(hWndListBox2, path2);
 			}
@@ -1172,7 +1143,7 @@ INT_PTR CALLBACK DialogRename1(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
 			_tcscpy_s(to, path1);
 			_tcscat_s(to, buf);
 
-			EndDialog(hDlg, LOWORD(FileOperation(from,to,FO_RENAME)));
+			EndDialog(hDlg, LOWORD(MoveFile(from,to)));
 			return (INT_PTR)TRUE;
 		case IDCANCEL:
 			EndDialog(hDlg, LOWORD(wParam));
@@ -1204,7 +1175,7 @@ INT_PTR CALLBACK DialogRename2(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
 			_tcscpy_s(to, path2);
 			_tcscat_s(to, buf);
 
-			EndDialog(hDlg, LOWORD(FileOperation(from,to,FO_RENAME)));
+			EndDialog(hDlg, LOWORD(MoveFile(from,to)));
 			return (INT_PTR)TRUE;
 		case IDCANCEL:
 			EndDialog(hDlg, LOWORD(wParam));
