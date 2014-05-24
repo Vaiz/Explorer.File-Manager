@@ -110,6 +110,7 @@ int					GetFileCount(const TCHAR path[MAX_PATH]);
 bool				DeleteFolder(const TCHAR pathFrom[MAX_PATH], HWND ProgressBar);
 DWORD WINAPI		ThreadDeleteDir(LPVOID lpParam);
 INT_PTR CALLBACK	Dialog_Delete_Dir(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
+INT_PTR CALLBACK	Dialog_Properties(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
 
 int APIENTRY _tWinMain(_In_ HINSTANCE hInstance,
 					   _In_opt_ HINSTANCE hPrevInstance,
@@ -192,7 +193,7 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 	hInst = hInstance; // Сохранить дескриптор экземпляра в глобальной переменной
 
 	hWnd = CreateWindow(szWindowClass, szTitle, WS_OVERLAPPEDWINDOW,
-		CW_USEDEFAULT, 0, 1000, 800, NULL, NULL, hInstance, NULL);
+		300, 100, 1000, 800, NULL, NULL, hInstance, NULL);
 
 	if (!hWnd)
 	{
@@ -523,43 +524,9 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 				delete[]selectedFile;
 			}
 			break;
-		case NM_RCLICK:
-			switch (lpnmHdr->idFrom)
-			{
-			case ID_LISTBOX_1:
-				hWndListBox = hWndListBox1;
-				hWndEdit = hWndEdit1;
-				path = path1;
-				break;
-			case ID_LISTBOX_2:
-				hWndListBox = hWndListBox2;
-				hWndEdit = hWndEdit2;
-				path = path2;
-				break;
-			default:
-				break;
-			}
-			if (hWndListBox)
-			{
-				selectedFile = new TCHAR[MAX_PATH];
-				ListView_GetItemText(lpnmHdr->hwndFrom, pnmLV->iItem, 0, selectedFile, MAX_PATH);
-
-				SHELLEXECUTEINFO fileInfo;
-
-				_tcscpy_s(fullPathToFile, path);
-				_tcscat_s(fullPathToFile, selectedFile);
-
-				ZeroMemory(&fileInfo,sizeof(SHELLEXECUTEINFO));
-				fileInfo.cbSize=sizeof(SHELLEXECUTEINFO);
-				fileInfo.lpVerb=_T("properties");
-				fileInfo.lpFile=fullPathToFile;
-				fileInfo.nShow=SW_SHOW;
-				fileInfo.fMask=SEE_MASK_INVOKEIDLIST;
-				ShellExecuteEx(&fileInfo);
-			}
-			break;
 		}
-		break;
+		return DefWindowProc(hWnd, message, wParam, lParam);
+
 	case WM_COMMAND:
 		wmId    = LOWORD(wParam);
 		wmEvent = HIWORD(wParam);
@@ -952,6 +919,37 @@ LRESULT CALLBACK WndProcListView1(HWND hWnd, UINT message, WPARAM wParam, LPARAM
 {		
 	switch(message)
 	{
+	case WM_COMMAND:
+		switch (wParam)
+		{
+		case ID_BUTTON_PROPERTIES:
+			DialogBox(hInst, MAKEINTRESOURCE(IDD_DIALOG_PROPERTIES), hWnd, Dialog_Properties);
+			break;
+		}
+		break;
+
+	case WM_RBUTTONDOWN:
+		{
+			RECT rect;
+			HMENU hPopupMenu;
+			GetWindowRect(hWnd,&rect);
+
+			CallWindowProc(origWndProcListView, hWnd, message, wParam, lParam);
+
+			ListView_GetItemText(hWnd, ListView_GetHotItem(hWnd), 0, selectedFile1, MAX_PATH);
+
+			lastListBox = 1;
+
+			hPopupMenu = CreatePopupMenu();
+			InsertMenu(hPopupMenu, 0, MF_BYPOSITION | MF_STRING, ID_BUTTON_PROPERTIES, _T("Свойства"));
+			InsertMenu(hPopupMenu, 0, MF_BYPOSITION | MF_STRING, ID_BUTTON_SEARCH, _T("Поиск"));
+			SetForegroundWindow(hWnd);
+			TrackPopupMenu(hPopupMenu, TPM_BOTTOMALIGN | TPM_LEFTALIGN, 
+				rect.left + (lParam & 0xffff), rect.top + (lParam >> 16) + 50, 
+				0, hWnd, NULL);	
+		}
+		break;
+
 	case WM_KEYDOWN:
 		TCHAR from[MAX_PATH], to[MAX_PATH];
 
@@ -1738,6 +1736,136 @@ INT_PTR CALLBACK Dialog_Delete_Dir(HWND hDlg, UINT message, WPARAM wParam, LPARA
 		case IDCANCEL:
 			cancelCopy = 1;
 //			EndDialog(hDlg, LOWORD(0));
+			return (INT_PTR)TRUE;
+		}
+		break;
+	}
+	return (INT_PTR)FALSE;
+}
+
+INT_PTR CALLBACK Dialog_Properties(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
+{
+	switch (message)
+	{
+	case WM_INITDIALOG:
+		{
+			TCHAR lpExistingFileName[MAX_PATH];
+			bool enable;
+			switch (lastListBox & 0x03)
+			{
+			case 0:
+				enable = 0;
+				EndDialog(hDlg, LOWORD(wParam));
+				break;
+			case 1:
+				enable = 1;
+				_tcscpy_s(lpExistingFileName, path1);
+				_tcscat_s(lpExistingFileName, selectedFile1);
+				break;
+			case 2:
+				enable = 1;
+				_tcscpy_s(lpExistingFileName, path2);
+				_tcscat_s(lpExistingFileName, selectedFile2);
+				break;
+			default:
+				enable = 0;
+			}
+			if (enable)
+			{
+				TCHAR buf[65536];
+				TCHAR buf2[1024];
+				WIN32_FIND_DATA fileInfo;	// переменная для загрузки данных об одном файле
+				HANDLE findFile;			// Указатель на файл
+				SYSTEMTIME fileDate;
+
+				_stprintf_s(buf,_T("Адрес файла: %s\r\n"),lpExistingFileName);
+
+				findFile = FindFirstFile(lpExistingFileName,&fileInfo);
+
+				if(fileInfo.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT)
+				{
+					_tcscat_s(buf, _T("Файл является ссылкой\r\n"));
+				}
+				else if(fileInfo.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+				{
+					LARGE_INTEGER folderSize;
+					_tcscat_s(lpExistingFileName, _T("\\"));
+					folderSize = GetFolderSize(lpExistingFileName);
+					_stprintf_s(buf2,_T("Размер папки: %lld байт\r\n"),folderSize.QuadPart);
+					_tcscat_s(buf, buf2);
+				}
+				else
+				{
+					LARGE_INTEGER fileSize;
+
+					fileSize.HighPart = fileInfo.nFileSizeHigh;
+					fileSize.LowPart = fileInfo.nFileSizeLow;
+
+					_stprintf_s(buf2,_T("Размер файла: %lld байт\r\n"),fileSize.QuadPart);
+					_tcscat_s(buf, buf2);
+				}
+
+				FileTimeToSystemTime(&fileInfo.ftCreationTime, &fileDate);		// преобразование даты в другую структуру
+				_stprintf_s(buf2, 256, _T("\r\nДата создания файла: %02d.%02d.%04d %02d:%02d\r\n"), fileDate.wDay, fileDate.wMonth, fileDate.wYear, fileDate.wHour, fileDate.wMinute);
+				_tcscat_s(buf, buf2);
+
+				FileTimeToSystemTime(&fileInfo.ftLastAccessTime, &fileDate);		// преобразование даты в другую структуру
+				_stprintf_s(buf2, 256, _T("Дата последнего доступа к файлу: %02d.%02d.%04d %02d:%02d\r\n"), fileDate.wDay, fileDate.wMonth, fileDate.wYear, fileDate.wHour, fileDate.wMinute);
+				_tcscat_s(buf, buf2);
+
+				FileTimeToSystemTime(&fileInfo.ftLastWriteTime, &fileDate);		// преобразование даты в другую структуру
+				_stprintf_s(buf2, 256, _T("Последнее время записи в файл: %02d.%02d.%04d %02d:%02d\r\n"), fileDate.wDay, fileDate.wMonth, fileDate.wYear, fileDate.wHour, fileDate.wMinute);
+				_tcscat_s(buf, buf2);
+
+				_stprintf_s(buf2,_T("\r\nFILE_ATTRIBUTE_ARCHIVE = %d\r\n"),(bool)(fileInfo.dwFileAttributes & FILE_ATTRIBUTE_ARCHIVE));
+				_tcscat_s(buf, buf2);
+
+				_stprintf_s(buf2,_T("FILE_ATTRIBUTE_COMPRESSED = %d\r\n"),(bool)(fileInfo.dwFileAttributes & FILE_ATTRIBUTE_COMPRESSED));
+				_tcscat_s(buf, buf2);
+
+				_stprintf_s(buf2,_T("FILE_ATTRIBUTE_DIRECTORY = %d\r\n"),(bool)(fileInfo.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY));
+				_tcscat_s(buf, buf2);
+
+				_stprintf_s(buf2,_T("FILE_ATTRIBUTE_ENCRYPTED = %d\r\n"),(bool)(fileInfo.dwFileAttributes & FILE_ATTRIBUTE_ENCRYPTED));
+				_tcscat_s(buf, buf2);
+
+				_stprintf_s(buf2,_T("FILE_ATTRIBUTE_HIDDEN = %d\r\n"),(bool)(fileInfo.dwFileAttributes & FILE_ATTRIBUTE_HIDDEN));
+				_tcscat_s(buf, buf2);
+
+				_stprintf_s(buf2,_T("FILE_ATTRIBUTE_NORMAL = %d\r\n"),(bool)(fileInfo.dwFileAttributes & FILE_ATTRIBUTE_NORMAL));
+				_tcscat_s(buf, buf2);
+
+				_stprintf_s(buf2,_T("FILE_ATTRIBUTE_OFFLINE = %d\r\n"),(bool)(fileInfo.dwFileAttributes & FILE_ATTRIBUTE_OFFLINE));
+				_tcscat_s(buf, buf2);
+
+				_stprintf_s(buf2,_T("FILE_ATTRIBUTE_READONLY = %d\r\n"),(bool)(fileInfo.dwFileAttributes & FILE_ATTRIBUTE_READONLY));
+				_tcscat_s(buf, buf2);
+
+				_stprintf_s(buf2,_T("FILE_ATTRIBUTE_REPARSE_POINT = %d\r\n"),(bool)(fileInfo.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT));
+				_tcscat_s(buf, buf2);
+
+				_stprintf_s(buf2,_T("FILE_ATTRIBUTE_SPARSE_FILE = %d\r\n"),(bool)(fileInfo.dwFileAttributes & FILE_ATTRIBUTE_SPARSE_FILE));
+				_tcscat_s(buf, buf2);
+
+				_stprintf_s(buf2,_T("FILE_ATTRIBUTE_SYSTEM = %d\r\n"),(bool)(fileInfo.dwFileAttributes & FILE_ATTRIBUTE_SYSTEM));
+				_tcscat_s(buf, buf2);
+
+				_stprintf_s(buf2,_T("FILE_ATTRIBUTE_TEMPORARY = %d\r\n"),(bool)(fileInfo.dwFileAttributes & FILE_ATTRIBUTE_TEMPORARY));
+				_tcscat_s(buf, buf2);
+
+				SetWindowText(GetDlgItem(hDlg, ID_DEDIT),buf);
+			}
+		}
+	
+		return (INT_PTR)TRUE;
+	case WM_COMMAND:
+		switch(wParam)
+		{
+		case IDCANCEL:
+			EndDialog(hDlg, LOWORD(wParam));
+			return (INT_PTR)TRUE;
+		case IDOK:
+			EndDialog(hDlg, LOWORD(wParam));
 			return (INT_PTR)TRUE;
 		}
 		break;
