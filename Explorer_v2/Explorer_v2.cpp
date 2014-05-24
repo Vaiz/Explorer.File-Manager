@@ -108,6 +108,9 @@ bool				CopyFolder(const TCHAR pathFrom[MAX_PATH], const TCHAR pathTo[MAX_PATH],
 INT_PTR CALLBACK	Dialog_Move(HWND, UINT, WPARAM, LPARAM);
 DWORD WINAPI		ThreadMove(LPVOID lpParam);
 int					GetFileCount(const TCHAR path[MAX_PATH]);
+bool				DeleteFolder(const TCHAR pathFrom[MAX_PATH], HWND ProgressBar);
+DWORD WINAPI		ThreadDeleteDir(LPVOID lpParam);
+INT_PTR CALLBACK	Dialog_Delete_Dir(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
 
 int APIENTRY _tWinMain(_In_ HINSTANCE hInstance,
 					   _In_opt_ HINSTANCE hPrevInstance,
@@ -1042,11 +1045,11 @@ LRESULT CALLBACK WndProcListView1(HWND hWnd, UINT message, WPARAM wParam, LPARAM
 						DisplayError(_T("Ошибка при попытке удаления"));
 					}
 					break;
-		/*		case 2:		// папка
-					DialogBox(hInst, MAKEINTRESOURCE(IDD_DIALOG_COPY_THREAD), hWnd, Dialog_Copy_Dir);
-					LoadFileList(hWndListBox2, path2);
+				case 2:		// папка
+					DialogBox(hInst, MAKEINTRESOURCE(IDD_DIALOG_COPY_THREAD), hWnd, Dialog_Delete_Dir);
+					LoadFileList(hWndListBox1, path1);
 					break;
-		*/		}
+				}
 				break;
 			}
 			break;
@@ -1116,9 +1119,26 @@ LRESULT CALLBACK WndProcListView2(HWND hWnd, UINT message, WPARAM wParam, LPARAM
 
 		case VK_DELETE:
 		case VK_F8:
-			if(FileOperation(from,0,FO_DELETE) == 0)
+			if(MessageBox(hWnd,_T("Вы действительно хотите удалить этот файл?"),_T("Запрос на удаление"),MB_YESNO) == IDYES)
 			{
-				LoadFileList(hWndListBox2, path2);
+				switch(lastListBox >> 2)
+				{
+				case 1:		// Файл
+					if (DeleteFile(from))
+					{
+						LoadFileList(hWndListBox2, path2);
+					}
+					else
+					{
+						DisplayError(_T("Ошибка при попытке удаления"));
+					}
+					break;
+				case 2:		// папка
+					DialogBox(hInst, MAKEINTRESOURCE(IDD_DIALOG_COPY_THREAD), hWnd, Dialog_Delete_Dir);
+					LoadFileList(hWndListBox2, path2);
+					break;
+				}
+				break;
 			}
 			break;
 
@@ -1636,3 +1656,120 @@ int	GetFileCount(const TCHAR path[MAX_PATH])
 	return Result;
 }
 
+bool DeleteFolder(const TCHAR pathFrom[MAX_PATH], HWND ProgressBar)
+{
+	HANDLE Handle;  
+	WIN32_FIND_DATA FindData;
+	TCHAR _pathFrom[MAX_PATH];
+
+	_tcscpy_s(_pathFrom, pathFrom);	
+	_tcscat_s(_pathFrom, MAX_PATH, _T("\\*")); 
+	
+	Handle = FindFirstFile(_pathFrom, &FindData);
+	if (Handle == INVALID_HANDLE_VALUE)
+	{		
+		return 0;
+	}		
+	do
+	{
+		if(_tcscmp(FindData.cFileName,L".") && _tcscmp(FindData.cFileName,L".."))
+		{
+			if(FindData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+			{				
+				TCHAR pathFrom2[MAX_PATH];
+				_tcscpy_s(pathFrom2,_pathFrom);				
+				pathFrom2[_tcslen(pathFrom2)-1] = 0;
+				_tcscat_s(pathFrom2, FindData.cFileName);
+				
+				DeleteFolder(pathFrom2, ProgressBar);
+			}
+			else
+			{
+				TCHAR lpExistingFileName[MAX_PATH];
+				
+				_tcscpy_s(lpExistingFileName, _pathFrom);
+				lpExistingFileName[_tcslen(lpExistingFileName) - 1] = 0;
+				_tcscat_s(lpExistingFileName, FindData.cFileName);
+				
+				if(DeleteFile(lpExistingFileName))
+				{
+					copySize.QuadPart = copySize.QuadPart + ((DWORDLONG)FindData.nFileSizeHigh<<32) + FindData.nFileSizeLow;
+					SendMessage(ProgressBar, PBM_SETPOS, (copySize.QuadPart * 100 / dirSize.QuadPart), 0);
+				}
+			}
+		}
+	}
+	while(FindNextFile(Handle, &FindData) != 0);
+	FindClose(Handle);
+	RemoveDirectory(pathFrom);
+	return 1;
+}
+
+DWORD WINAPI ThreadDeleteDir(LPVOID lpParam)
+{
+	TCHAR lpExistingFileName[MAX_PATH];
+	TCHAR lpNewFileName[MAX_PATH];
+	DWORD r = 0;
+	bool copy;
+	switch (lastListBox & 0x03)
+	{
+	case 0:
+		copy = 0;
+		EndDialog((HWND)lpParam, LOWORD(IDCANCEL));
+		break;
+	case 1:
+		copy = 1;
+		_tcscpy_s(lpExistingFileName, path1);
+		_tcscat_s(lpExistingFileName, selectedFile1);
+		_tcscpy_s(lpNewFileName, path2);
+		_tcscat_s(lpNewFileName, selectedFile1);
+		break;
+	case 2:
+		copy = 1;
+		_tcscpy_s(lpExistingFileName, path2);
+		_tcscat_s(lpExistingFileName, selectedFile2);
+		_tcscpy_s(lpNewFileName, path1);
+		_tcscat_s(lpNewFileName, selectedFile2);
+		break;
+	default:
+		copy = 0;
+	}
+	if (copy)
+	{
+		cancelCopy = 0;		
+		copySize.QuadPart = 0;
+		dirSize = GetFolderSize(lpExistingFileName);
+		if(!dirSize.QuadPart) dirSize.QuadPart = 1;
+
+		r = DeleteFolder(lpExistingFileName, GetDlgItem((HWND)lpParam, ID_DPROGRESSBAR));
+		if(!r)	 DisplayError(_T("Ошибка при перемещении."));
+	}
+	EndDialog((HWND)lpParam, LOWORD(r));
+	return r;
+}
+
+INT_PTR CALLBACK Dialog_Delete_Dir(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
+{
+	switch (message)
+	{
+	case WM_INITDIALOG:
+		CreateThread(
+			0,	// default security attributes
+			0, // use default stack size
+			ThreadDeleteDir,	// thread function name
+			hDlg,	// argument to thread function
+			0, // use default creation flags
+			0);
+		return (INT_PTR)TRUE;
+	case WM_COMMAND:
+		switch(wParam)
+		{
+		case IDCANCEL:
+			cancelCopy = 1;
+//			EndDialog(hDlg, LOWORD(0));
+			return (INT_PTR)TRUE;
+		}
+		break;
+	}
+	return (INT_PTR)FALSE;
+}
