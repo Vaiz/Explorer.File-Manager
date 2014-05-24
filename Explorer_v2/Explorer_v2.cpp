@@ -105,6 +105,8 @@ DWORD CALLBACK		CopyProgressRoutineForDir(
 	_In_opt_ LPVOID lpData
 	);
 bool				CopyFolder(TCHAR pathFrom[MAX_PATH], TCHAR pathTo[MAX_PATH], HWND ProgressBar);
+INT_PTR CALLBACK	Dialog_Move(HWND, UINT, WPARAM, LPARAM);
+DWORD WINAPI		ThreadMove(LPVOID lpParam);
 
 int APIENTRY _tWinMain(_In_ HINSTANCE hInstance,
 					   _In_opt_ HINSTANCE hPrevInstance,
@@ -247,8 +249,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 
 		x = 10;
 		y = 10;
-		dx = 200;
-		width = 170;
+		
 		k = _tcslen(disk) + 1;
 		while (*disk != '\0')
 		{
@@ -308,8 +309,16 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		SetWindowText(hWndEdit1, path1);
 		SetWindowText(hWndEdit2, path2);
 
+		dx = 164;
+		width = 150;
+
 		CreateWindow(_T("BUTTON"), _T("F2 Переименование"), WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON,
 			x, y, width, 30, hWnd, (HMENU)ID_BUTTON_RENAME, NULL, NULL);
+
+		x += dx;
+
+		CreateWindow(_T("BUTTON"), _T("F3 Редактирование"), WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON,
+			x, y, width, 30, hWnd, (HMENU)ID_BUTTON_EDIT, NULL, NULL);
 
 		x += dx;
 
@@ -872,18 +881,14 @@ int CALLBACK SortUpDir(LPARAM lParam1, LPARAM lParam2, LPARAM lParamSort)
 		1, word2, 256);
 
 	if (word1[0] == '<' && word2[0] == '<')
-		//	if ((_tcscmp(word1, _T("<Папка>")) == 0 || _tcscmp(word1, _T("<Ссылка>")) == 0) &&
-			//		(_tcscmp(word2, _T("<Папка>")) == 0 || _tcscmp(word2, _T("<Ссылка>")) == 0))
 	{
 		return 0;
 	}
 	else if (word1[0] == '<')
-		//	else if (_tcscmp(word1, _T("<Папка>")) == 0 || _tcscmp(word1, _T("<Ссылка>")) == 0)
 	{
 		return -1;
 	}
 	else if (word2[0] == '<')
-		//	else if (_tcscmp(word2, _T("<Папка>")) == 0 || _tcscmp(word2, _T("<Ссылка>")) == 0)
 	{
 		return 1;
 	}
@@ -1008,7 +1013,7 @@ LRESULT CALLBACK WndProcListView1(HWND hWnd, UINT message, WPARAM wParam, LPARAM
 			break;
 
 		case VK_F6:
-			if(FileOperation(from,to,FO_MOVE) == 0)
+			if(DialogBox(hInst, MAKEINTRESOURCE(IDD_DIALOG_COPY_THREAD), hWnd, Dialog_Move))
 			{
 				LoadFileList(hWndListBox1, path1);
 				LoadFileList(hWndListBox2, path2);
@@ -1079,7 +1084,7 @@ LRESULT CALLBACK WndProcListView2(HWND hWnd, UINT message, WPARAM wParam, LPARAM
 			break;
 
 		case VK_F6:
-			if(FileOperation(from,to,FO_MOVE) == 0)
+			if(DialogBox(hInst, MAKEINTRESOURCE(IDD_DIALOG_COPY_THREAD), hWnd, Dialog_Move))
 			{
 				LoadFileList(hWndListBox1, path1);
 				LoadFileList(hWndListBox2, path2);
@@ -1501,4 +1506,69 @@ bool CopyFolder(TCHAR pathFrom[MAX_PATH], TCHAR pathTo[MAX_PATH], HWND ProgressB
 	while(FindNextFile(Handle, &FindData) != 0);
 	FindClose(Handle);
 	return 1;
+}
+
+DWORD WINAPI ThreadMove(LPVOID lpParam)
+{
+	TCHAR lpExistingFileName[MAX_PATH];
+	TCHAR lpNewFileName[MAX_PATH];
+	DWORD r = 0;
+	bool copy;
+	switch (lastListBox & 0x03)
+	{
+	case 0:
+		copy = 0;
+		EndDialog((HWND)lpParam, LOWORD(IDCANCEL));
+		break;
+	case 1:
+		copy = 1;
+		_tcscpy_s(lpExistingFileName, path1);
+		_tcscat_s(lpExistingFileName, selectedFile1);
+		_tcscpy_s(lpNewFileName, path2);
+		_tcscat_s(lpNewFileName, selectedFile1);
+		break;
+	case 2:
+		copy = 1;
+		_tcscpy_s(lpExistingFileName, path2);
+		_tcscat_s(lpExistingFileName, selectedFile2);
+		_tcscpy_s(lpNewFileName, path1);
+		_tcscat_s(lpNewFileName, selectedFile2);
+		break;
+	default:
+		copy = 0;
+	}
+	if (copy)
+	{
+		cancelCopy = 0;
+		r = MoveFileWithProgress(lpExistingFileName, lpNewFileName, CopyProgressRoutineForFile, GetDlgItem((HWND)lpParam, ID_DPROGRESSBAR), MOVEFILE_COPY_ALLOWED);
+		if(!r)	 DisplayError(_T("Ошибка при перемещении."));
+	}
+	EndDialog((HWND)lpParam, LOWORD(r));
+	return r;
+}
+
+INT_PTR CALLBACK Dialog_Move(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
+{
+	switch (message)
+	{
+	case WM_INITDIALOG:
+		CreateThread(
+			0,	// default security attributes
+			0, // use default stack size
+			ThreadMove,	// thread function name
+			hDlg,	// argument to thread function
+			0, // use default creation flags
+			0);
+		return (INT_PTR)TRUE;
+	case WM_COMMAND:
+		switch(wParam)
+		{
+		case IDCANCEL:
+			cancelCopy = 1;
+//			EndDialog(hDlg, LOWORD(0));
+			return (INT_PTR)TRUE;
+		}
+		break;
+	}
+	return (INT_PTR)FALSE;
 }
