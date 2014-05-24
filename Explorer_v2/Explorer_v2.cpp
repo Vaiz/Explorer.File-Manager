@@ -90,7 +90,7 @@ DWORD	CALLBACK	CopyProgressRoutineForFile(
 	_In_opt_ LPVOID lpData
 	);
 DWORD WINAPI		ThreadCopyForFile(LPVOID lpParam);
-LARGE_INTEGER		GetFolderSize(TCHAR path[MAX_PATH]);
+LARGE_INTEGER		GetFolderSize(const TCHAR path[MAX_PATH]);
 INT_PTR CALLBACK	Dialog_Copy_Dir(HWND, UINT, WPARAM, LPARAM);
 DWORD WINAPI		ThreadCopyForDir(LPVOID lpParam);
 DWORD CALLBACK		CopyProgressRoutineForDir(
@@ -104,9 +104,10 @@ DWORD CALLBACK		CopyProgressRoutineForDir(
 	_In_ HANDLE hDestinationFile,
 	_In_opt_ LPVOID lpData
 	);
-bool				CopyFolder(TCHAR pathFrom[MAX_PATH], TCHAR pathTo[MAX_PATH], HWND ProgressBar);
+bool				CopyFolder(const TCHAR pathFrom[MAX_PATH], const TCHAR pathTo[MAX_PATH], HWND ProgressBar);
 INT_PTR CALLBACK	Dialog_Move(HWND, UINT, WPARAM, LPARAM);
 DWORD WINAPI		ThreadMove(LPVOID lpParam);
+int					GetFileCount(const TCHAR path[MAX_PATH]);
 
 int APIENTRY _tWinMain(_In_ HINSTANCE hInstance,
 					   _In_opt_ HINSTANCE hPrevInstance,
@@ -145,8 +146,6 @@ int APIENTRY _tWinMain(_In_ HINSTANCE hInstance,
 
 	return (int) msg.wParam;
 }
-
-
 
 //
 //  ФУНКЦИЯ: MyRegisterClass()
@@ -362,7 +361,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			default:
 				break;
 			}
-			if (hWndListBox)
+			if (hWndListBox && pnmLV->iItem != -1)
 			{
 				ListView_GetItemText(lpnmHdr->hwndFrom, pnmLV->iItem, 0, selectedFile, MAX_PATH);
 				if (_tcscmp(selectedFile, _T("..")) && _tcscmp(selectedFile, _T(".")))
@@ -391,7 +390,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			default:
 				break;
 			}
-			if (hWndListBox)
+			if (hWndListBox && pnmLV->iItem != -1)
 			{
 				selectedFile = new TCHAR[MAX_PATH];
 				ListView_GetItemText(lpnmHdr->hwndFrom, pnmLV->iItem, 0, selectedFile, MAX_PATH);
@@ -1029,9 +1028,26 @@ LRESULT CALLBACK WndProcListView1(HWND hWnd, UINT message, WPARAM wParam, LPARAM
 
 		case VK_DELETE:
 		case VK_F8:
-			if(FileOperation(from,0,FO_DELETE) == 0)
+			if(MessageBox(hWnd,_T("Вы действительно хотите удалить этот файл?"),_T("Запрос на удаление"),MB_YESNO) == IDYES)
 			{
-				LoadFileList(hWndListBox1, path1);
+				switch(lastListBox >> 2)
+				{
+				case 1:		// Файл
+					if (DeleteFile(from))
+					{
+						LoadFileList(hWndListBox1, path1);
+					}
+					else
+					{
+						DisplayError(_T("Ошибка при попытке удаления"));
+					}
+					break;
+		/*		case 2:		// папка
+					DialogBox(hInst, MAKEINTRESOURCE(IDD_DIALOG_COPY_THREAD), hWnd, Dialog_Copy_Dir);
+					LoadFileList(hWndListBox2, path2);
+					break;
+		*/		}
+				break;
 			}
 			break;
 		default:
@@ -1324,15 +1340,17 @@ DWORD CALLBACK CopyProgressRoutineForFile(
 	return PROGRESS_CONTINUE;
 }
 
-LARGE_INTEGER GetFolderSize(TCHAR path[MAX_PATH])
+LARGE_INTEGER GetFolderSize(const TCHAR path[MAX_PATH])
 {
 	HANDLE Handle;  
 	WIN32_FIND_DATA FindData;
 	LARGE_INTEGER Result;
 	LARGE_INTEGER tmp;
+	TCHAR _path[MAX_PATH];
 	Result.QuadPart = 0;
-	_tcscat_s(path, MAX_PATH, _T("*"));
-	Handle = FindFirstFile(path, &FindData);
+	_tcscpy_s(_path,path);
+	_tcscat_s(_path, MAX_PATH, _T("*"));
+	Handle = FindFirstFile(_path, &FindData);
 	if (Handle == INVALID_HANDLE_VALUE)
 	{		
 		return Result;
@@ -1345,7 +1363,7 @@ LARGE_INTEGER GetFolderSize(TCHAR path[MAX_PATH])
 			{				
 				tmp.QuadPart = 0;
 				TCHAR path2[MAX_PATH];
-				_tcscpy_s(path2,path);
+				_tcscpy_s(path2,_path);
 				path2[_tcslen(path2)-1] = 0;
 				_tcscat_s(path2, FindData.cFileName);
 				_tcscat_s(path2, _T("\\")); 
@@ -1456,15 +1474,22 @@ DWORD CALLBACK CopyProgressRoutineForDir(
 	return PROGRESS_CONTINUE;
 }
 
-bool CopyFolder(TCHAR pathFrom[MAX_PATH], TCHAR pathTo[MAX_PATH], HWND ProgressBar)
+bool CopyFolder(const TCHAR pathFrom[MAX_PATH], const TCHAR pathTo[MAX_PATH], HWND ProgressBar)
 {
 	HANDLE Handle;  
 	WIN32_FIND_DATA FindData;
+	TCHAR _pathTo[MAX_PATH];
+	TCHAR _pathFrom[MAX_PATH];
 
-	CreateDirectory(pathTo, 0);
-	_tcscat_s(pathTo, MAX_PATH, _T("\\")); 
+	_tcscpy_s(_pathTo, pathTo);
+	_tcscpy_s(_pathFrom, pathFrom);
 	
-	Handle = FindFirstFile(pathFrom, &FindData);
+	CreateDirectory(_pathTo, 0);	
+	
+	_tcscat_s(_pathTo, MAX_PATH, _T("\\")); 
+	_tcscat_s(_pathFrom, MAX_PATH, _T("*")); 
+	
+	Handle = FindFirstFile(_pathFrom, &FindData);
 	if (Handle == INVALID_HANDLE_VALUE)
 	{		
 		return 0;
@@ -1476,12 +1501,12 @@ bool CopyFolder(TCHAR pathFrom[MAX_PATH], TCHAR pathTo[MAX_PATH], HWND ProgressB
 			if(FindData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
 			{				
 				TCHAR pathFrom2[MAX_PATH], pathTo2[MAX_PATH];
-				_tcscpy_s(pathFrom2,pathFrom);				
+				_tcscpy_s(pathFrom2,_pathFrom);				
 				pathFrom2[_tcslen(pathFrom2)-1] = 0;
 				_tcscat_s(pathFrom2, FindData.cFileName);
-				_tcscat_s(pathFrom2, _T("\\*")); 
+				_tcscat_s(pathFrom2, _T("\\")); 
 				
-				_tcscpy_s(pathTo2, pathTo);
+				_tcscpy_s(pathTo2, _pathTo);
 				_tcscat_s(pathTo2, FindData.cFileName);
 				//_tcscat_s(pathTo2, _T("\\")); 
 				
@@ -1492,10 +1517,10 @@ bool CopyFolder(TCHAR pathFrom[MAX_PATH], TCHAR pathTo[MAX_PATH], HWND ProgressB
 				TCHAR lpExistingFileName[MAX_PATH];
 				TCHAR lpNewFileName[MAX_PATH];
 
-				_tcscpy_s(lpExistingFileName, pathFrom);
+				_tcscpy_s(lpExistingFileName, _pathFrom);
 				lpExistingFileName[_tcslen(lpExistingFileName) - 1] = 0;
 				_tcscat_s(lpExistingFileName, FindData.cFileName);
-				_tcscpy_s(lpNewFileName, pathTo);
+				_tcscpy_s(lpNewFileName, _pathTo);
 				_tcscat_s(lpNewFileName, FindData.cFileName);
 
 				if(CopyFileEx(lpExistingFileName, lpNewFileName, CopyProgressRoutineForDir, ProgressBar, (LPBOOL)&cancelCopy, COPY_FILE_FAIL_IF_EXISTS))
@@ -1572,3 +1597,42 @@ INT_PTR CALLBACK Dialog_Move(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPar
 	}
 	return (INT_PTR)FALSE;
 }
+
+int	GetFileCount(const TCHAR path[MAX_PATH])
+{
+	HANDLE Handle;  
+	WIN32_FIND_DATA FindData;
+	int Result;
+	TCHAR _path[MAX_PATH];
+	Result = 0;
+	_tcscpy_s(_path,path);
+	_tcscat_s(_path, MAX_PATH, _T("*"));
+	Handle = FindFirstFile(_path, &FindData);
+	if (Handle == INVALID_HANDLE_VALUE)
+	{		
+		return Result;
+	}		
+	do
+	{
+		if(_tcscmp(FindData.cFileName,L".") && _tcscmp(FindData.cFileName,L".."))
+		{
+			if(FindData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+			{				
+				TCHAR path2[MAX_PATH];
+				_tcscpy_s(path2,_path);
+				path2[_tcslen(path2)-1] = 0;
+				_tcscat_s(path2, FindData.cFileName);
+				_tcscat_s(path2, _T("\\")); 
+				Result += GetFileCount(path2);
+			}
+			else
+			{
+				Result++;				
+			}
+		}
+	}
+	while(FindNextFile(Handle, &FindData) != 0);
+	FindClose(Handle);
+	return Result;
+}
+
