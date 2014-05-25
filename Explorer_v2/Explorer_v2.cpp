@@ -113,6 +113,7 @@ INT_PTR CALLBACK	Dialog_Delete_Dir(HWND hDlg, UINT message, WPARAM wParam, LPARA
 INT_PTR CALLBACK	Dialog_Properties(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
 INT_PTR CALLBACK	Dialog_Search(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
 bool				SearchFile(const TCHAR pathFrom[MAX_PATH], TCHAR *searched, int bufSize, const TCHAR *word);
+INT_PTR CALLBACK	Dialog_Edit(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
 
 int APIENTRY _tWinMain(_In_ HINSTANCE hInstance,
 					   _In_opt_ HINSTANCE hPrevInstance,
@@ -1016,6 +1017,10 @@ LRESULT CALLBACK WndProcListView1(HWND hWnd, UINT message, WPARAM wParam, LPARAM
 			{
 				LoadFileList(hWndListBox1, path1);
 			}
+			break;
+
+		case VK_F3:
+			DialogBox(hInst, MAKEINTRESOURCE(IDD_DIALOG_EDIT), hWnd, Dialog_Edit);
 			break;
 
 		case VK_F5:
@@ -2029,4 +2034,114 @@ bool SearchFile(const TCHAR pathFrom[MAX_PATH], TCHAR *searched, int bufSize, co
 	while(FindNextFile(Handle, &FindData) != 0);
 	FindClose(Handle);
 	return 1;
+}
+
+INT_PTR CALLBACK Dialog_Edit(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
+{
+	switch (message)
+	{
+	case WM_INITDIALOG:	
+		if(lastListBox >> 2 & 0x01)
+		{
+			TCHAR selectedFile[MAX_PATH];
+			bool enable;
+			switch (lastListBox & 0x03)
+			{
+			case 0:
+				enable = 0;
+				break;
+			case 1:
+				enable = 1;
+				_tcscpy_s(selectedFile, path1);
+				_tcscat_s(selectedFile, selectedFile1);
+				break;
+			case 2:
+				enable = 1;
+				_tcscpy_s(selectedFile, path2);
+				_tcscat_s(selectedFile, selectedFile2);
+				break;
+			default:
+				enable = 0;
+			}
+			if (enable && _tcscmp(_T(".txt"),selectedFile + (_tcslen(selectedFile) - 4)) == 0)
+			{
+				HANDLE hFile;
+				CHAR *buf;
+				int size;
+				DWORD read;
+
+				hFile = CreateFile(selectedFile, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, 0, 0);
+				buf = new CHAR[size = GetFileSize(hFile,0) + 1];
+
+				ReadFile(hFile,buf,size,&read,0);
+				buf[read] = 0;
+				SetWindowTextA(GetDlgItem(hDlg, ID_DLIST), buf);
+				
+				CloseHandle(hFile);
+				delete []buf;
+			}
+			else
+				EndDialog(hDlg, LOWORD(0));
+		}
+		else
+			EndDialog(hDlg, LOWORD(0));
+		return (INT_PTR)TRUE;
+
+	case WM_COMMAND:
+		switch(wParam)
+		{
+		case IDCANCEL:
+			EndDialog(hDlg, LOWORD(wParam));
+			return (INT_PTR)TRUE;
+		case IDOK:
+			if(lastListBox >> 2 & 0x01)
+			{
+				TCHAR selectedFile[MAX_PATH];
+				bool enable;
+				switch (lastListBox & 0x03)
+				{
+				case 0:
+					enable = 0;
+					break;
+				case 1:
+					enable = 1;
+					_tcscpy_s(selectedFile, path1);
+					_tcscat_s(selectedFile, selectedFile1);
+					break;
+				case 2:
+					enable = 1;
+					_tcscpy_s(selectedFile, path2);
+					_tcscat_s(selectedFile, selectedFile2);
+					break;
+				default:
+					enable = 0;
+				}
+				if (enable && _tcscmp(_T(".txt"),selectedFile + (_tcslen(selectedFile) - 4)) == 0)
+				{
+					HANDLE hFile;
+					CHAR *buf;
+					int size;
+					DWORD read;
+
+					size = GetWindowTextLength(GetDlgItem(hDlg, ID_DLIST)) + 1;
+					buf = new CHAR[size];
+
+					read = GetWindowTextA(GetDlgItem(hDlg, ID_DLIST), buf, size);
+
+					hFile = CreateFile(selectedFile, GENERIC_WRITE, FILE_SHARE_READ, 0, OPEN_EXISTING, 0, 0);
+
+					WriteFile(hFile, buf, read, 0, 0);
+
+					CloseHandle(hFile);
+					delete []buf;
+				}
+				else
+					EndDialog(hDlg, LOWORD(0));
+			}
+			else
+				EndDialog(hDlg, LOWORD(0));
+			return (INT_PTR)TRUE;
+		}
+	}
+	return (INT_PTR)FALSE;
 }
