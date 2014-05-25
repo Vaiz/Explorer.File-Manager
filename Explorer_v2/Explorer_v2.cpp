@@ -920,18 +920,50 @@ LRESULT CALLBACK WndProcListView1(HWND hWnd, UINT message, WPARAM wParam, LPARAM
 	switch(message)
 	{
 	case WM_COMMAND:
-		switch (wParam)
 		{
-		case ID_BUTTON_PROPERTIES:
-			DialogBox(hInst, MAKEINTRESOURCE(IDD_DIALOG_PROPERTIES), hWnd, Dialog_Properties);
-			break;
+			TCHAR lpExistingFileName[MAX_PATH];
+			DWORD atribut;
+			_tcscpy_s(lpExistingFileName, path1);
+			_tcscat_s(lpExistingFileName, selectedFile1);
+			atribut = GetFileAttributes(lpExistingFileName);
+			switch (wParam)
+			{
+			case ID_BUTTON_PROPERTIES:
+				DialogBox(hInst, MAKEINTRESOURCE(IDD_DIALOG_PROPERTIES), hWnd, Dialog_Properties);
+				break;
+
+			case ID_BUTTON_SET_UNHIDDEN:
+				atribut -= FILE_ATTRIBUTE_HIDDEN;
+				SetFileAttributes(lpExistingFileName,atribut);
+				break;
+
+			case ID_BUTTON_SET_HIDDEN:
+				atribut += FILE_ATTRIBUTE_HIDDEN;
+				SetFileAttributes(lpExistingFileName,atribut);
+				break;
+
+			case ID_BUTTON_SET_NOTREADONLY:
+				atribut -= FILE_ATTRIBUTE_READONLY;
+				SetFileAttributes(lpExistingFileName,atribut);
+				break;
+
+			case ID_BUTTON_SET_READONLY:
+				atribut += FILE_ATTRIBUTE_READONLY;
+				SetFileAttributes(lpExistingFileName,atribut);
+				break;
+
+			case ID_BUTTON_SEARCH:
+				break;
+			}
 		}
 		break;
 
 	case WM_RBUTTONDOWN:
 		{
+			TCHAR lpExistingFileName[MAX_PATH];
 			RECT rect;
 			HMENU hPopupMenu;
+			DWORD atribut;
 			GetWindowRect(hWnd,&rect);
 
 			CallWindowProc(origWndProcListView, hWnd, message, wParam, lParam);
@@ -940,13 +972,29 @@ LRESULT CALLBACK WndProcListView1(HWND hWnd, UINT message, WPARAM wParam, LPARAM
 
 			lastListBox = 1;
 
+			_tcscpy_s(lpExistingFileName, path1);
+			_tcscat_s(lpExistingFileName, selectedFile1);
+
+			atribut = GetFileAttributes(lpExistingFileName);
+
 			hPopupMenu = CreatePopupMenu();
-			InsertMenu(hPopupMenu, 0, MF_BYPOSITION | MF_STRING, ID_BUTTON_PROPERTIES, _T("Свойства"));
-			InsertMenu(hPopupMenu, 0, MF_BYPOSITION | MF_STRING, ID_BUTTON_SEARCH, _T("Поиск"));
+			InsertMenu(hPopupMenu, 0, MF_STRING, ID_BUTTON_PROPERTIES, _T("Свойства"));
+			InsertMenu(hPopupMenu, 1, MF_STRING, ID_BUTTON_SEARCH, _T("Поиск"));
+			if(atribut & FILE_ATTRIBUTE_HIDDEN)
+				InsertMenu(hPopupMenu, 2, MF_STRING, ID_BUTTON_SET_UNHIDDEN, _T("Сделать видимым"));
+			else
+				InsertMenu(hPopupMenu, 2, MF_STRING, ID_BUTTON_SET_HIDDEN, _T("Сделать невидимым"));
+			if(atribut & FILE_ATTRIBUTE_READONLY)
+				InsertMenu(hPopupMenu, 3, MF_STRING, ID_BUTTON_SET_NOTREADONLY, _T("Разрешить редактирование"));
+			else
+				InsertMenu(hPopupMenu, 3, MF_STRING, ID_BUTTON_SET_READONLY, _T("Запретить редактирование"));
+
 			SetForegroundWindow(hWnd);
-			TrackPopupMenu(hPopupMenu, TPM_BOTTOMALIGN | TPM_LEFTALIGN, 
-				rect.left + (lParam & 0xffff), rect.top + (lParam >> 16) + 50, 
+			TrackPopupMenu(hPopupMenu, 0, 
+				rect.left + (lParam & 0xffff), rect.top + (lParam >> 16), 
 				0, hWnd, NULL);	
+
+			DestroyMenu(hPopupMenu);
 		}
 		break;
 
