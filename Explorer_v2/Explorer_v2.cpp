@@ -111,6 +111,8 @@ bool				DeleteFolder(const TCHAR pathFrom[MAX_PATH], HWND ProgressBar);
 DWORD WINAPI		ThreadDeleteDir(LPVOID lpParam);
 INT_PTR CALLBACK	Dialog_Delete_Dir(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
 INT_PTR CALLBACK	Dialog_Properties(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
+INT_PTR CALLBACK	Dialog_Search(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
+bool				SearchFile(const TCHAR pathFrom[MAX_PATH], TCHAR *searched, int bufSize, const TCHAR *word);
 
 int APIENTRY _tWinMain(_In_ HINSTANCE hInstance,
 					   _In_opt_ HINSTANCE hPrevInstance,
@@ -953,6 +955,7 @@ LRESULT CALLBACK WndProcListView1(HWND hWnd, UINT message, WPARAM wParam, LPARAM
 				break;
 
 			case ID_BUTTON_SEARCH:
+				DialogBox(hInst, MAKEINTRESOURCE(IDD_DIALOG_SEARCH), hWnd, Dialog_Search);
 				break;
 			}
 		}
@@ -1919,4 +1922,111 @@ INT_PTR CALLBACK Dialog_Properties(HWND hDlg, UINT message, WPARAM wParam, LPARA
 		break;
 	}
 	return (INT_PTR)FALSE;
+}
+
+INT_PTR CALLBACK Dialog_Search(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
+{
+	switch (message)
+	{
+	case WM_INITDIALOG:	
+		return (INT_PTR)TRUE;
+	case WM_COMMAND:
+		switch(wParam)
+		{
+		case ID_DBUTTON:
+			{
+				TCHAR path[MAX_PATH];
+				bool enable;
+				switch (lastListBox & 0x03)
+				{
+				case 0:
+					enable = 0;
+					EndDialog(hDlg, LOWORD(wParam));
+					break;
+				case 1:
+					enable = 1;
+					_tcscpy_s(path, path1);
+					break;
+				case 2:
+					enable = 1;
+					_tcscpy_s(path, path2);
+					break;
+				default:
+					enable = 0;
+				}
+				if (enable)
+				{
+					TCHAR searched[65536];
+					TCHAR word[MAX_PATH];
+					int size;
+
+					path[_tcslen(path) - 1] = 0;
+
+					word[size = GetWindowText(GetDlgItem(hDlg, ID_DEDIT),word,MAX_PATH)] = 0;
+
+					if(size)
+					{
+						searched[0] = 0;
+						SearchFile(path, searched, 65536, word);
+						SetWindowText(GetDlgItem(hDlg, ID_DLIST), searched);
+					}
+				}
+
+				
+			}
+			return (INT_PTR)TRUE;
+		case IDCANCEL:
+			EndDialog(hDlg, LOWORD(wParam));
+			return (INT_PTR)TRUE;
+		case IDOK:
+			EndDialog(hDlg, LOWORD(wParam));
+			return (INT_PTR)TRUE;
+		}
+		break;
+	}
+	return (INT_PTR)FALSE;
+}
+
+bool SearchFile(const TCHAR pathFrom[MAX_PATH], TCHAR *searched, int bufSize, const TCHAR *word)
+{
+	HANDLE Handle;  
+	WIN32_FIND_DATA FindData;
+	TCHAR _pathFrom[MAX_PATH];
+
+	_tcscpy_s(_pathFrom, pathFrom);	
+	_tcscat_s(_pathFrom, MAX_PATH, _T("\\*")); 
+	
+	Handle = FindFirstFile(_pathFrom, &FindData);
+	if (Handle == INVALID_HANDLE_VALUE)
+	{		
+		return 0;
+	}		
+	do
+	{
+		if(_tcscmp(FindData.cFileName,L".") && _tcscmp(FindData.cFileName,L".."))
+		{
+			if(FindData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+			{				
+				TCHAR pathFrom2[MAX_PATH];
+				_tcscpy_s(pathFrom2, pathFrom);		
+				_tcscat_s(pathFrom2, _T("\\"));
+				_tcscat_s(pathFrom2, FindData.cFileName);
+				
+				SearchFile(pathFrom2, searched, bufSize, word);
+			}
+			else
+			{
+				if(_tcscmp(word,FindData.cFileName) == 0)
+				{						
+					_tcscat_s(searched, bufSize, pathFrom);
+					_tcscat_s(searched, bufSize, _T("\\"));
+					_tcscat_s(searched, bufSize, FindData.cFileName);
+					_tcscat_s(searched, bufSize, _T("\r\n"));
+				}
+			}
+		}
+	}
+	while(FindNextFile(Handle, &FindData) != 0);
+	FindClose(Handle);
+	return 1;
 }
