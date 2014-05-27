@@ -114,6 +114,7 @@ INT_PTR CALLBACK	Dialog_Properties(HWND hDlg, UINT message, WPARAM wParam, LPARA
 INT_PTR CALLBACK	Dialog_Search(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
 bool				SearchFile(const TCHAR pathFrom[MAX_PATH], TCHAR *searched, int bufSize, const TCHAR *word);
 INT_PTR CALLBACK	Dialog_Edit(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
+INT_PTR CALLBACK	Dialog_CreateFile(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
 
 int APIENTRY _tWinMain(_In_ HINSTANCE hInstance,
 					   _In_opt_ HINSTANCE hPrevInstance,
@@ -545,7 +546,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			break;
 
 		case ID_BUTTON_RENAME:
-			switch (lastListBox)
+			switch (lastListBox & 0x03)
 			{
 			case 1:
 				SendMessage(hWndListBox1,WM_KEYDOWN,VK_F2,0);
@@ -556,8 +557,20 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			}
 			break;
 
+		case ID_BUTTON_EDIT:
+			switch (lastListBox & 0x03)
+			{
+			case 1:
+				SendMessage(hWndListBox1,WM_KEYDOWN,VK_F3,0);
+				break;
+			case 2:
+				SendMessage(hWndListBox2,WM_KEYDOWN,VK_F3,0);
+				break;
+			}
+			break;
+
 		case ID_BUTTON_COPY:
-			switch (lastListBox)
+			switch (lastListBox & 0x03)
 			{
 			case 1:
 				SendMessage(hWndListBox1,WM_KEYDOWN,VK_F5,0);
@@ -569,7 +582,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			break;
 
 		case ID_BUTTON_MOVE:
-			switch (lastListBox)
+			switch (lastListBox & 0x03)
 			{
 			case 1:
 				SendMessage(hWndListBox1,WM_KEYDOWN,VK_F6,0);
@@ -581,7 +594,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			break;
 
 		case ID_BUTTON_DIR_CREATE:
-			switch (lastListBox)
+			switch (lastListBox & 0x03)
 			{
 			case 1:
 				SendMessage(hWndListBox1,WM_KEYDOWN,VK_F7,0);
@@ -593,7 +606,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			break;
 
 		case ID_BUTTON_DELETE:
-			switch (lastListBox)
+			switch (lastListBox & 0x03)
 			{
 			case 1:
 				SendMessage(hWndListBox1,WM_KEYDOWN,VK_F8,0);
@@ -958,6 +971,12 @@ LRESULT CALLBACK WndProcListView1(HWND hWnd, UINT message, WPARAM wParam, LPARAM
 			case ID_BUTTON_SEARCH:
 				DialogBox(hInst, MAKEINTRESOURCE(IDD_DIALOG_SEARCH), hWnd, Dialog_Search);
 				break;
+
+			case ID_BUTTON_CREATE_FILE:
+				if(DialogBox(hInst, MAKEINTRESOURCE(IDD_DIALOG_RENAME), hWnd, Dialog_CreateFile) == 1)
+					LoadFileList(hWndListBox1, path1);
+				break;
+
 			}
 		}
 		break;
@@ -992,6 +1011,7 @@ LRESULT CALLBACK WndProcListView1(HWND hWnd, UINT message, WPARAM wParam, LPARAM
 				InsertMenu(hPopupMenu, 3, MF_STRING, ID_BUTTON_SET_NOTREADONLY, _T("Разрешить редактирование"));
 			else
 				InsertMenu(hPopupMenu, 3, MF_STRING, ID_BUTTON_SET_READONLY, _T("Запретить редактирование"));
+			InsertMenu(hPopupMenu, 4, MF_STRING, ID_BUTTON_CREATE_FILE, _T("Создать файл"));
 
 			SetForegroundWindow(hWnd);
 			TrackPopupMenu(hPopupMenu, 0, 
@@ -1003,13 +1023,6 @@ LRESULT CALLBACK WndProcListView1(HWND hWnd, UINT message, WPARAM wParam, LPARAM
 		break;
 
 	case WM_KEYDOWN:
-		TCHAR from[MAX_PATH], to[MAX_PATH];
-
-		_tcscpy_s(from, path1);
-		_tcscat_s(from, selectedFile1);
-		_tcscpy_s(to, path2);
-		_tcscat_s(to, selectedFile1);
-
 		switch(wParam)
 		{
 		case VK_F2:
@@ -1058,6 +1071,11 @@ LRESULT CALLBACK WndProcListView1(HWND hWnd, UINT message, WPARAM wParam, LPARAM
 		case VK_F8:
 			if(MessageBox(hWnd,_T("Вы действительно хотите удалить этот файл?"),_T("Запрос на удаление"),MB_YESNO) == IDYES)
 			{
+				TCHAR from[MAX_PATH];
+
+				_tcscpy_s(from, path1);
+				_tcscat_s(from, selectedFile1);
+		
 				switch(lastListBox >> 2)
 				{
 				case 1:		// Файл
@@ -1091,17 +1109,94 @@ LRESULT CALLBACK WndProcListView2(HWND hWnd, UINT message, WPARAM wParam, LPARAM
 {		
 	switch(message)
 	{
-	case WM_RBUTTONUP:
+	case WM_COMMAND:
+		{
+			TCHAR lpExistingFileName[MAX_PATH];
+			DWORD atribut;
+			_tcscpy_s(lpExistingFileName, path2);
+			_tcscat_s(lpExistingFileName, selectedFile2);
+			atribut = GetFileAttributes(lpExistingFileName);
+			switch (wParam)
+			{
+			case ID_BUTTON_PROPERTIES:
+				DialogBox(hInst, MAKEINTRESOURCE(IDD_DIALOG_PROPERTIES), hWnd, Dialog_Properties);
+				break;
 
+			case ID_BUTTON_SET_UNHIDDEN:
+				atribut -= FILE_ATTRIBUTE_HIDDEN;
+				SetFileAttributes(lpExistingFileName,atribut);
+				break;
+
+			case ID_BUTTON_SET_HIDDEN:
+				atribut += FILE_ATTRIBUTE_HIDDEN;
+				SetFileAttributes(lpExistingFileName,atribut);
+				break;
+
+			case ID_BUTTON_SET_NOTREADONLY:
+				atribut -= FILE_ATTRIBUTE_READONLY;
+				SetFileAttributes(lpExistingFileName,atribut);
+				break;
+
+			case ID_BUTTON_SET_READONLY:
+				atribut += FILE_ATTRIBUTE_READONLY;
+				SetFileAttributes(lpExistingFileName,atribut);
+				break;
+
+			case ID_BUTTON_SEARCH:
+				DialogBox(hInst, MAKEINTRESOURCE(IDD_DIALOG_SEARCH), hWnd, Dialog_Search);
+				break;
+
+			case ID_BUTTON_CREATE_FILE:
+				if(DialogBox(hInst, MAKEINTRESOURCE(IDD_DIALOG_RENAME), hWnd, Dialog_CreateFile) == 1)
+					LoadFileList(hWndListBox2, path2);
+				break;
+
+			}
+		}
 		break;
+
+	case WM_RBUTTONDOWN:
+		{
+			TCHAR lpExistingFileName[MAX_PATH];
+			RECT rect;
+			HMENU hPopupMenu;
+			DWORD atribut;
+			GetWindowRect(hWnd,&rect);
+
+			CallWindowProc(origWndProcListView, hWnd, message, wParam, lParam);
+
+			ListView_GetItemText(hWnd, ListView_GetHotItem(hWnd), 0, selectedFile2, MAX_PATH);
+
+			lastListBox = 2;
+
+			_tcscpy_s(lpExistingFileName, path2);
+			_tcscat_s(lpExistingFileName, selectedFile2);
+
+			atribut = GetFileAttributes(lpExistingFileName);
+
+			hPopupMenu = CreatePopupMenu();
+			InsertMenu(hPopupMenu, 0, MF_STRING, ID_BUTTON_PROPERTIES, _T("Свойства"));
+			InsertMenu(hPopupMenu, 1, MF_STRING, ID_BUTTON_SEARCH, _T("Поиск"));
+			if(atribut & FILE_ATTRIBUTE_HIDDEN)
+				InsertMenu(hPopupMenu, 2, MF_STRING, ID_BUTTON_SET_UNHIDDEN, _T("Сделать видимым"));
+			else
+				InsertMenu(hPopupMenu, 2, MF_STRING, ID_BUTTON_SET_HIDDEN, _T("Сделать невидимым"));
+			if(atribut & FILE_ATTRIBUTE_READONLY)
+				InsertMenu(hPopupMenu, 3, MF_STRING, ID_BUTTON_SET_NOTREADONLY, _T("Разрешить редактирование"));
+			else
+				InsertMenu(hPopupMenu, 3, MF_STRING, ID_BUTTON_SET_READONLY, _T("Запретить редактирование"));
+			InsertMenu(hPopupMenu, 4, MF_STRING, ID_BUTTON_CREATE_FILE, _T("Создать файл"));
+
+			SetForegroundWindow(hWnd);
+			TrackPopupMenu(hPopupMenu, 0, 
+				rect.left + (lParam & 0xffff), rect.top + (lParam >> 16), 
+				0, hWnd, NULL);	
+
+			DestroyMenu(hPopupMenu);
+		}
+		break;
+
 	case WM_KEYDOWN:
-		TCHAR from[MAX_PATH], to[MAX_PATH];
-
-		_tcscpy_s(from, path2);
-		_tcscat_s(from, selectedFile2);
-		_tcscpy_s(to, path1);
-		_tcscat_s(to, selectedFile2);
-
 		switch(wParam)
 		{
 		case VK_F2:
@@ -1109,6 +1204,10 @@ LRESULT CALLBACK WndProcListView2(HWND hWnd, UINT message, WPARAM wParam, LPARAM
 			{
 				LoadFileList(hWndListBox2, path2);
 			}
+			break;
+
+		case VK_F3:
+			DialogBox(hInst, MAKEINTRESOURCE(IDD_DIALOG_EDIT), hWnd, Dialog_Edit);
 			break;
 
 		case VK_F5:
@@ -1146,6 +1245,11 @@ LRESULT CALLBACK WndProcListView2(HWND hWnd, UINT message, WPARAM wParam, LPARAM
 		case VK_F8:
 			if(MessageBox(hWnd,_T("Вы действительно хотите удалить этот файл?"),_T("Запрос на удаление"),MB_YESNO) == IDYES)
 			{
+				TCHAR from[MAX_PATH];
+
+				_tcscpy_s(from, path2);
+				_tcscat_s(from, selectedFile2);
+
 				switch(lastListBox >> 2)
 				{
 				case 1:		// Файл
@@ -2134,6 +2238,73 @@ INT_PTR CALLBACK Dialog_Edit(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPar
 
 					CloseHandle(hFile);
 					delete []buf;
+				}
+				else
+					EndDialog(hDlg, LOWORD(0));
+			}
+			else
+				EndDialog(hDlg, LOWORD(0));
+			return (INT_PTR)TRUE;
+		}
+	}
+	return (INT_PTR)FALSE;
+}
+
+INT_PTR CALLBACK Dialog_CreateFile(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
+{
+	switch (message)
+	{
+	case WM_INITDIALOG:	
+		if(lastListBox & 0x03)
+		{}
+		else
+			EndDialog(hDlg, LOWORD(0));
+		return (INT_PTR)TRUE;
+
+	case WM_COMMAND:
+		switch(wParam)
+		{
+		case IDCANCEL:
+			EndDialog(hDlg, LOWORD(wParam));
+			return (INT_PTR)TRUE;
+		case IDOK:
+			if(lastListBox & 0x03)
+			{
+				TCHAR selectedFile[MAX_PATH];
+				bool enable;
+				switch (lastListBox & 0x03)
+				{
+				case 0:
+					enable = 0;
+					break;
+				case 1:
+					enable = 1;
+					_tcscpy_s(selectedFile, path1);
+					break;
+				case 2:
+					enable = 1;
+					_tcscpy_s(selectedFile, path2);
+					break;
+				default:
+					enable = 0;
+				}
+				if (enable)
+				{
+					HANDLE hFile;
+					TCHAR name[MAX_PATH];
+
+					name[GetWindowText(GetDlgItem(hDlg, ID_DEDIT), name, MAX_PATH)] = 0;
+
+					_tcscat_s(selectedFile,name);
+
+					hFile = CreateFile(selectedFile, GENERIC_WRITE, FILE_SHARE_READ, 0, CREATE_NEW, 0, 0);
+
+					if(hFile != INVALID_HANDLE_VALUE)
+						EndDialog(hDlg, LOWORD(1));
+					else
+						EndDialog(hDlg, LOWORD(0));
+	
+					CloseHandle(hFile);					
 				}
 				else
 					EndDialog(hDlg, LOWORD(0));
