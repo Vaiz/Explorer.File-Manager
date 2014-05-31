@@ -115,6 +115,7 @@ INT_PTR CALLBACK	Dialog_Search(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
 bool				SearchFile(const TCHAR pathFrom[MAX_PATH], TCHAR *searched, int bufSize, const TCHAR *word);
 INT_PTR CALLBACK	Dialog_Edit(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
 INT_PTR CALLBACK	Dialog_CreateFile(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
+INT_PTR CALLBACK	Dialog_CreateHardLink(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
 
 int APIENTRY _tWinMain(_In_ HINSTANCE hInstance,
 					   _In_opt_ HINSTANCE hPrevInstance,
@@ -250,7 +251,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		disk_start = disk = new TCHAR[256];
 		memset(disk_start, 0, sizeof(disk_start));
 
-		GetLogicalDrives();
 		GetLogicalDriveStrings(256, (LPTSTR)disk);
 
 		x = 10;
@@ -1150,6 +1150,10 @@ LRESULT CALLBACK WndProcListView2(HWND hWnd, UINT message, WPARAM wParam, LPARAM
 				if(DialogBox(hInst, MAKEINTRESOURCE(IDD_DIALOG_RENAME), hWnd, Dialog_CreateFile) == 1)
 					LoadFileList(hWndListBox2, path2);
 				break;
+			case ID_BUTTON_CREATE_HARD_LINK:
+				if(DialogBox(hInst, MAKEINTRESOURCE(IDD_DIALOG_RENAME), hWnd, Dialog_CreateHardLink) == 1)
+					LoadFileList(hWndListBox2, path2);
+				break;
 
 			}
 		}
@@ -1186,6 +1190,7 @@ LRESULT CALLBACK WndProcListView2(HWND hWnd, UINT message, WPARAM wParam, LPARAM
 			else
 				InsertMenu(hPopupMenu, 3, MF_STRING, ID_BUTTON_SET_READONLY, _T("Запретить редактирование"));
 			InsertMenu(hPopupMenu, 4, MF_STRING, ID_BUTTON_CREATE_FILE, _T("Создать файл"));
+			InsertMenu(hPopupMenu, 5, MF_STRING, ID_BUTTON_CREATE_HARD_LINK, _T("Создать жесткую ссылку"));
 
 			SetForegroundWindow(hWnd);
 			TrackPopupMenu(hPopupMenu, 0, 
@@ -2305,6 +2310,70 @@ INT_PTR CALLBACK Dialog_CreateFile(HWND hDlg, UINT message, WPARAM wParam, LPARA
 						EndDialog(hDlg, LOWORD(0));
 	
 					CloseHandle(hFile);					
+				}
+				else
+					EndDialog(hDlg, LOWORD(0));
+			}
+			else
+				EndDialog(hDlg, LOWORD(0));
+			return (INT_PTR)TRUE;
+		}
+	}
+	return (INT_PTR)FALSE;
+}
+
+INT_PTR CALLBACK Dialog_CreateHardLink(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
+{
+	switch (message)
+	{
+	case WM_INITDIALOG:	
+		if(lastListBox & 0x03)
+		{}
+		else
+			EndDialog(hDlg, LOWORD(0));
+		return (INT_PTR)TRUE;
+
+	case WM_COMMAND:
+		switch(wParam)
+		{
+		case IDCANCEL:
+			EndDialog(hDlg, LOWORD(wParam));
+			return (INT_PTR)TRUE;
+		case IDOK:
+			if(lastListBox & 0x03)
+			{
+				TCHAR pszExistingFileName[MAX_PATH], pszNewLinkName[MAX_PATH];
+				bool enable;
+				switch (lastListBox & 0x03)
+				{
+				case 0:
+					enable = 0;
+					break;
+				case 1:
+					enable = 1;
+					_tcscpy_s(pszExistingFileName, path1);
+					_tcscat_s(pszExistingFileName, selectedFile1);
+					_tcscpy_s(pszNewLinkName, path1);
+					break;
+				case 2:
+					enable = 1;
+					_tcscpy_s(pszExistingFileName, path2);
+					_tcscat_s(pszExistingFileName, selectedFile2);
+					_tcscpy_s(pszNewLinkName, path2);
+					break;
+				default:
+					enable = 0;
+				}
+				if (enable)
+				{
+					HANDLE hFile;
+					TCHAR name[MAX_PATH];
+
+					name[GetWindowText(GetDlgItem(hDlg, ID_DEDIT), name, MAX_PATH)] = 0;
+
+					_tcscat_s(pszNewLinkName, name);
+
+					EndDialog(hDlg, LOWORD(CreateHardLink(pszNewLinkName, pszExistingFileName, 0)));			
 				}
 				else
 					EndDialog(hDlg, LOWORD(0));
