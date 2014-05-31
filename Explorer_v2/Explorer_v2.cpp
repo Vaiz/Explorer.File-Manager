@@ -2108,7 +2108,8 @@ bool SearchFile(const TCHAR pathFrom[MAX_PATH], TCHAR *searched, int bufSize, co
 	TCHAR _pathFrom[MAX_PATH];
 
 	_tcscpy_s(_pathFrom, pathFrom);	
-	_tcscat_s(_pathFrom, MAX_PATH, _T("\\*")); 
+	_tcscat_s(_pathFrom, MAX_PATH, _T("\\")); 
+	_tcscat_s(_pathFrom, MAX_PATH, word); 
 	
 	Handle = FindFirstFile(_pathFrom, &FindData);
 	if (Handle == INVALID_HANDLE_VALUE)
@@ -2119,24 +2120,11 @@ bool SearchFile(const TCHAR pathFrom[MAX_PATH], TCHAR *searched, int bufSize, co
 	{
 		if(_tcscmp(FindData.cFileName,L".") && _tcscmp(FindData.cFileName,L".."))
 		{
-			if(FindData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
-			{				
-				TCHAR pathFrom2[MAX_PATH];
-				_tcscpy_s(pathFrom2, pathFrom);		
-				_tcscat_s(pathFrom2, _T("\\"));
-				_tcscat_s(pathFrom2, FindData.cFileName);
-				
-				SearchFile(pathFrom2, searched, bufSize, word);
-			}
-			else
-			{
-				if(_tcscmp(word,FindData.cFileName) == 0)
-				{						
-					_tcscat_s(searched, bufSize, pathFrom);
-					_tcscat_s(searched, bufSize, _T("\\"));
-					_tcscat_s(searched, bufSize, FindData.cFileName);
-					_tcscat_s(searched, bufSize, _T("\r\n"));
-				}
+			{						
+				_tcscat_s(searched, bufSize, pathFrom);
+				_tcscat_s(searched, bufSize, _T("\\"));
+				_tcscat_s(searched, bufSize, FindData.cFileName);
+				_tcscat_s(searched, bufSize, _T("\r\n"));
 			}
 		}
 	}
